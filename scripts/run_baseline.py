@@ -2,6 +2,7 @@ import argparse
 import json
 from pathlib import Path
 
+from sparse_recon.datasets.simulation_snapshot import SimulationSnapshotDataset
 from sparse_recon.datasets.synthetic import create_synthetic_field
 from sparse_recon.datasets.helioswarm import load_helioswarm_sample_coords
 from sparse_recon.methods.linear import LinearMethod
@@ -28,6 +29,23 @@ def build_method(name: str):
 
 def _parse_csv(value: str, cast):
     return [cast(item.strip()) for item in value.split(",") if item.strip()]
+
+
+def load_field(args):
+    if args.data_source == "synthetic":
+        return create_synthetic_field(
+            kind=args.field_kind,
+            nx=args.nx,
+            ny=args.ny,
+            nz=args.nz,
+            seed=args.field_seed,
+            noise_sigma=args.field_noise_sigma,
+        )
+    if args.data_source == "simulation":
+        if not args.simulation_path:
+            raise ValueError("Simulation mode requires --simulation-path")
+        return SimulationSnapshotDataset(args.simulation_path).load()
+    raise ValueError(f"Unknown data source '{args.data_source}'")
 
 
 def save_experiment_figure(field, samples, predicted_values, title: str, output_path: Path):
@@ -78,6 +96,8 @@ def run_benchmark_matrix(args) -> list[dict]:
     output_dir.mkdir(parents=True, exist_ok=True)
     if bool(args.hs_path) != bool(args.hs_time):
         raise ValueError("HelioSwarm mode requires both --hs-path and --hs-time")
+    if args.data_source == "simulation" and args.field_kind != "simulation_snapshot":
+        args.field_kind = "simulation_snapshot"
 
     records = []
     experiment_index = 0
@@ -87,14 +107,7 @@ def run_benchmark_matrix(args) -> list[dict]:
     geometries = _parse_csv(args.geometries, str)
     noise_levels = _parse_csv(args.noise_levels, float)
 
-    field = create_synthetic_field(
-        kind=args.field_kind,
-        nx=args.nx,
-        ny=args.ny,
-        nz=args.nz,
-        seed=args.field_seed,
-        noise_sigma=args.field_noise_sigma,
-    )
+    field = load_field(args)
     dim = field.coords.shape[1]
     use_helioswarm = bool(args.hs_path and args.hs_time)
 
@@ -151,6 +164,7 @@ def run_benchmark_matrix(args) -> list[dict]:
                         metadata={
                             "experiment": {
                                 "field_kind": args.field_kind,
+                                "data_source": args.data_source,
                                 "geometry": geometry,
                                 "sample_count": sample_count,
                                 "noise_sigma": noise_sigma,
@@ -201,9 +215,11 @@ def run_benchmark_matrix(args) -> list[dict]:
 
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="Run synthetic sparse reconstruction benchmarks.")
+    parser.add_argument("--data-source", default="synthetic", choices=["synthetic", "simulation"])
     parser.add_argument("--field-kind", default="smooth")
     parser.add_argument("--field-seed", type=int, default=0)
     parser.add_argument("--field-noise-sigma", type=float, default=0.05)
+    parser.add_argument("--simulation-path", default=None)
     parser.add_argument("--methods", default="rbf,linear,nearest")
     parser.add_argument("--sample-counts", default="50")
     parser.add_argument("--geometries", default="random,clustered,multi_probe_like")
