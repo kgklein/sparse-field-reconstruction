@@ -69,6 +69,9 @@ def plot_reconstruction_overview_3d(
     title: str = "",
 ):
     nx, ny, nz = field.grid_shape
+    x = np.asarray(field.axes["x"], dtype=float)
+    y = np.asarray(field.axes["y"], dtype=float)
+    z = np.asarray(field.axes["z"], dtype=float)
     truth_mag = np.linalg.norm(field.values, axis=1).reshape(nx, ny, nz)
     pred_mag = np.linalg.norm(predicted_values, axis=1).reshape(nx, ny, nz)
     error_mag = np.linalg.norm(predicted_values - field.values, axis=1).reshape(nx, ny, nz)
@@ -78,25 +81,81 @@ def plot_reconstruction_overview_3d(
     iz = nz // 2
 
     slices = [
-        ("xy", truth_mag[:, :, iz], pred_mag[:, :, iz], error_mag[:, :, iz], samples.coords[:, :2]),
-        ("xz", truth_mag[:, iy, :], pred_mag[:, iy, :], error_mag[:, iy, :], samples.coords[:, [0, 2]]),
-        ("yz", truth_mag[ix, :, :], pred_mag[ix, :, :], error_mag[ix, :, :], samples.coords[:, 1:]),
+        (
+            "xy",
+            truth_mag[:, :, iz].T,
+            pred_mag[:, :, iz].T,
+            error_mag[:, :, iz].T,
+            samples.coords[:, :2],
+            [x[0], x[-1], y[0], y[-1]],
+            ("x", "y"),
+        ),
+        (
+            "xz",
+            truth_mag[:, iy, :].T,
+            pred_mag[:, iy, :].T,
+            error_mag[:, iy, :].T,
+            samples.coords[:, [0, 2]],
+            [x[0], x[-1], z[0], z[-1]],
+            ("x", "z"),
+        ),
+        (
+            "yz",
+            truth_mag[ix, :, :].T,
+            pred_mag[ix, :, :].T,
+            error_mag[ix, :, :].T,
+            samples.coords[:, 1:],
+            [y[0], y[-1], z[0], z[-1]],
+            ("y", "z"),
+        ),
     ]
 
     fig, axes = plt.subplots(3, 3, figsize=(13, 12), constrained_layout=True)
-    for row, (label, truth_slice, pred_slice, error_slice, projected_samples) in enumerate(slices):
-        im0 = axes[row, 0].imshow(truth_slice.T, origin="lower", cmap="viridis", aspect="auto")
+    for row, (
+        label,
+        truth_slice,
+        pred_slice,
+        error_slice,
+        projected_samples,
+        extent,
+        axis_labels,
+    ) in enumerate(slices):
+        im0 = axes[row, 0].imshow(
+            truth_slice,
+            origin="lower",
+            cmap="viridis",
+            aspect="auto",
+            extent=extent,
+        )
         axes[row, 0].scatter(projected_samples[:, 0], projected_samples[:, 1], s=8, c="white", alpha=0.35)
         axes[row, 0].set_title(f"{label.upper()} Truth | n={len(samples.coords)}")
         fig.colorbar(im0, ax=axes[row, 0], shrink=0.8)
 
-        im1 = axes[row, 1].imshow(pred_slice.T, origin="lower", cmap="viridis", aspect="auto")
+        im1 = axes[row, 1].imshow(
+            pred_slice,
+            origin="lower",
+            cmap="viridis",
+            aspect="auto",
+            extent=extent,
+        )
         axes[row, 1].set_title(f"{label.upper()} Prediction")
         fig.colorbar(im1, ax=axes[row, 1], shrink=0.8)
 
-        im2 = axes[row, 2].imshow(error_slice.T, origin="lower", cmap="magma", aspect="auto")
+        im2 = axes[row, 2].imshow(
+            error_slice,
+            origin="lower",
+            cmap="magma",
+            aspect="auto",
+            extent=extent,
+        )
         axes[row, 2].set_title(f"{label.upper()} Error")
         fig.colorbar(im2, ax=axes[row, 2], shrink=0.8)
+
+        for col in range(3):
+            axes[row, col].set_xlim(extent[0], extent[1])
+            axes[row, col].set_ylim(extent[2], extent[3])
+            axes[row, col].set_xlabel(axis_labels[0])
+            axes[row, col].set_ylabel(axis_labels[1])
 
     if title:
         fig.suptitle(title)

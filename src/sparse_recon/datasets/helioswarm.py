@@ -6,6 +6,8 @@ from pathlib import Path
 import numpy as np
 from cdflib import CDF, cdfepoch
 
+FILL_VALUE_THRESHOLD = -1e30
+
 
 @dataclass
 class HelioSwarmTrajectoryData:
@@ -44,13 +46,22 @@ def _list_cdf_files(path: str | Path) -> list[Path]:
 
 def _read_single_cdf(path: Path) -> tuple[np.ndarray, np.ndarray, list[str], np.ndarray | None]:
     cdf = CDF(str(path))
-    epoch_tt2000 = np.asarray(cdf.varget("Epoch"), dtype=np.int64)
-    positions_km = np.asarray(cdf.varget("Position"), dtype=float)
+    try:
+        epoch_tt2000 = np.asarray(cdf.varget("Epoch"), dtype=np.int64)
+        positions_km = np.asarray(cdf.varget("Position"), dtype=float)
+    except ValueError as exc:
+        if "No records found for variable" in str(exc):
+            return np.array([], dtype=np.int64), np.empty((0, 0, 3)), [], None
+        raise
     labels = np.asarray(cdf.varget("Spacecraft_Label")).astype(str).ravel().tolist()
 
     baselines_km = None
     if "Baseline" in cdf.cdf_info().zVariables:
-        baselines_km = np.asarray(cdf.varget("Baseline"), dtype=float)
+        try:
+            baselines_km = np.asarray(cdf.varget("Baseline"), dtype=float)
+        except ValueError as exc:
+            if "No records found for variable" not in str(exc):
+                raise
 
     return epoch_tt2000, positions_km, labels, baselines_km
 
@@ -66,6 +77,8 @@ def load_helioswarm_trajectory_data(path: str | Path) -> HelioSwarmTrajectoryDat
 
     for cdf_path in files:
         epoch_tt2000, positions_km, labels, baselines_km = _read_single_cdf(cdf_path)
+        if epoch_tt2000.size == 0:
+            continue
         if spacecraft_labels is None:
             spacecraft_labels = labels
         elif spacecraft_labels != labels:
@@ -76,6 +89,9 @@ def load_helioswarm_trajectory_data(path: str | Path) -> HelioSwarmTrajectoryDat
         if baselines_km is not None:
             all_baselines.append(baselines_km)
         source_files.extend([str(cdf_path)] * len(epoch_tt2000))
+
+    if not all_epochs:
+        raise ValueError(f"No HelioSwarm samples with Epoch records were found in: {path}")
 
     epoch_tt2000 = np.concatenate(all_epochs, axis=0)
     positions_km = np.concatenate(all_positions, axis=0)
@@ -128,16 +144,22 @@ def select_helioswarm_hour(
     except ValueError as exc:
         raise ValueError("HelioSwarm labels do not contain hub spacecraft 'H'") from exc
 
+    valid_mask = np.all(positions > FILL_VALUE_THRESHOLD, axis=1)
+    valid_mask &= np.array([label != "N/A" for label in labels], dtype=bool)
+    if not np.any(valid_mask):
+        raise ValueError("No valid HelioSwarm spacecraft positions found at selected time")
+
     relative_positions_km = positions - positions[hub_index]
 
-    selected_labels = labels
+    valid_labels = [label for label, is_valid in zip(labels, valid_mask) if is_valid]
+    selected_labels = valid_labels
     if spacecraft_subset is not None:
-        missing = sorted(set(spacecraft_subset) - set(labels))
+        missing = sorted(set(spacecraft_subset) - set(valid_labels))
         if missing:
             raise ValueError(f"Unknown spacecraft labels requested: {', '.join(missing)}")
         selected_labels = spacecraft_subset
     elif not include_hub:
-        selected_labels = [label for label in labels if label != "H"]
+        selected_labels = [label for label in valid_labels if label != "H"]
 
     selection_idx = [labels.index(label) for label in selected_labels]
     raw_positions_selected = positions[selection_idx]
