@@ -4,6 +4,50 @@ import numpy as np
 from sparse_recon.types import FieldSnapshot, SampleSet
 
 
+def _scatter_projected_samples(ax, projected_samples: np.ndarray, samples: SampleSet):
+    projected_samples = np.asarray(projected_samples, dtype=float)
+    sample_metadata = samples.metadata or {}
+    spacecraft_labels = sample_metadata.get("spacecraft_labels")
+    include_hub = bool(sample_metadata.get("include_hub", False))
+
+    hub_index = None
+    if spacecraft_labels:
+        try:
+            hub_index = list(spacecraft_labels).index("H")
+        except ValueError:
+            hub_index = None
+    elif include_hub and len(projected_samples) == 9:
+        hub_index = len(projected_samples) - 1
+
+    node_mask = np.ones(len(projected_samples), dtype=bool)
+    if hub_index is not None:
+        node_mask[hub_index] = False
+
+    if np.any(node_mask):
+        ax.scatter(
+            projected_samples[node_mask, 0],
+            projected_samples[node_mask, 1],
+            s=52,
+            facecolors="#f4f1de",
+            edgecolors="#111111",
+            linewidths=1.25,
+            alpha=0.95,
+            zorder=3,
+        )
+    if hub_index is not None:
+        ax.scatter(
+            projected_samples[hub_index, 0],
+            projected_samples[hub_index, 1],
+            s=90,
+            marker="*",
+            facecolors="#ff5a36",
+            edgecolors="#111111",
+            linewidths=1.4,
+            alpha=1.0,
+            zorder=4,
+        )
+
+
 def plot_field_and_samples_2d(
     field: FieldSnapshot,
     samples: SampleSet,
@@ -127,7 +171,6 @@ def plot_reconstruction_overview_3d(
             aspect="auto",
             extent=extent,
         )
-        axes[row, 0].scatter(projected_samples[:, 0], projected_samples[:, 1], s=8, c="white", alpha=0.35)
         axes[row, 0].set_title(f"{label.upper()} Truth | n={len(samples.coords)}")
         fig.colorbar(im0, ax=axes[row, 0], shrink=0.8)
 
@@ -152,6 +195,7 @@ def plot_reconstruction_overview_3d(
         fig.colorbar(im2, ax=axes[row, 2], shrink=0.8)
 
         for col in range(3):
+            _scatter_projected_samples(axes[row, col], projected_samples, samples)
             axes[row, col].set_xlim(extent[0], extent[1])
             axes[row, col].set_ylim(extent[2], extent[3])
             axes[row, col].set_xlabel(axis_labels[0])

@@ -104,11 +104,21 @@ def run_sampling_experiment(
     include_divergence: bool = True,
     metadata: dict | None = None,
 ) -> tuple[SampleSet, ReconstructionResult]:
+    sampling_metadata = {}
+    if metadata and "helioswarm" in metadata:
+        helioswarm_metadata = metadata["helioswarm"]
+        spacecraft_labels = helioswarm_metadata.get("spacecraft_labels")
+        if spacecraft_labels is not None:
+            sampling_metadata["spacecraft_labels"] = list(spacecraft_labels)
+        if "include_hub" in helioswarm_metadata:
+            sampling_metadata["include_hub"] = bool(helioswarm_metadata["include_hub"])
+
     samples = sample_field(
         field,
         sample_coords,
         noise_sigma=noise_sigma,
         seed=noise_seed,
+        metadata=sampling_metadata or None,
     )
     result = run_reconstruction(
         field,
