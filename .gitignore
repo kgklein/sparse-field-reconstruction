@@ -28,3 +28,9 @@ data/processed/
 
 # Env files
 .env
+
+# Editor backup / temp files
+*~
+*.swp
+*.swo
+*.bak
