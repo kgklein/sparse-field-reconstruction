@@ -16,7 +16,8 @@ dependencies = [
   "numpy>=1.24",
   "scipy>=1.11",
   "matplotlib>=3.7",
-  "pyyaml>=6.0"
+  "pyyaml>=6.0",
+  "cdflib>=1.2"
 ]
 
 [project.optional-dependencies]

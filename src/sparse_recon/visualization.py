@@ -101,3 +101,26 @@ def plot_reconstruction_overview_3d(
     if title:
         fig.suptitle(title)
     return fig, axes
+
+
+def plot_point_cloud_3d(
+    coords: np.ndarray,
+    *,
+    labels: list[str] | None = None,
+    title: str = "",
+    axis_labels: tuple[str, str, str] = ("X", "Y", "Z"),
+):
+    coords = np.asarray(coords, dtype=float)
+    fig = plt.figure(figsize=(7, 6))
+    ax = fig.add_subplot(111, projection="3d")
+    ax.scatter(coords[:, 0], coords[:, 1], coords[:, 2], s=50, c=np.arange(len(coords)), cmap="tab10")
+
+    if labels is not None:
+        for label, point in zip(labels, coords):
+            ax.text(point[0], point[1], point[2], label)
+
+    ax.set_xlabel(axis_labels[0])
+    ax.set_ylabel(axis_labels[1])
+    ax.set_zlabel(axis_labels[2])
+    ax.set_title(title)
+    return fig, ax
