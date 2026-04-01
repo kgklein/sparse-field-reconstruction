@@ -86,6 +86,43 @@ def multi_probe_like_points_2d(
     return np.asarray(points[:n_points], dtype=float)
 
 
+def multi_probe_like_points_3d(
+    n_points: int,
+    seed: int = 0,
+    low: float = 0.0,
+    high: float = 1.0,
+    spacing: float = 0.05,
+) -> np.ndarray:
+    rng = np.random.default_rng(seed)
+    centers = np.array(
+        [
+            [0.3, 0.3, 0.3],
+            [0.3, 0.7, 0.7],
+            [0.7, 0.3, 0.7],
+            [0.7, 0.7, 0.3],
+        ]
+    )
+    offsets = spacing * np.array(
+        [
+            [0.0, 0.0, 0.0],
+            [1.0, 1.0, 1.0],
+            [1.0, -1.0, -1.0],
+            [-1.0, 1.0, -1.0],
+            [-1.0, -1.0, 1.0],
+        ]
+    )
+
+    points = []
+    while len(points) < n_points:
+        for center in centers:
+            jitter = rng.normal(scale=spacing / 6.0, size=offsets.shape)
+            probe = np.clip(center + offsets + jitter, low, high)
+            points.extend(probe.tolist())
+            if len(points) >= n_points:
+                break
+    return np.asarray(points[:n_points], dtype=float)
+
+
 def generate_sampling_points(
     geometry: str,
     n_points: int,
@@ -105,14 +142,21 @@ def generate_sampling_points(
             high=high,
         )
     if geometry == "multi_probe_like":
-        if dim != 2:
-            raise ValueError("multi_probe_like geometry currently supports dim=2 only")
-        return multi_probe_like_points_2d(
-            n_points=n_points,
-            seed=seed,
-            low=low,
-            high=high,
-        )
+        if dim == 2:
+            return multi_probe_like_points_2d(
+                n_points=n_points,
+                seed=seed,
+                low=low,
+                high=high,
+            )
+        if dim == 3:
+            return multi_probe_like_points_3d(
+                n_points=n_points,
+                seed=seed,
+                low=low,
+                high=high,
+            )
+        raise ValueError("multi_probe_like geometry currently supports dim=2 or dim=3")
 
     supported = ["clustered", "multi_probe_like", "random"]
     raise ValueError(f"Unknown geometry '{geometry}'. Supported: {', '.join(supported)}")

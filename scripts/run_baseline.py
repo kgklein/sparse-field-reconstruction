@@ -8,7 +8,10 @@ from sparse_recon.methods.nearest import NearestMethod
 from sparse_recon.methods.rbf import RBFMethod
 from sparse_recon.pipeline import run_sampling_experiment
 from sparse_recon.sampling.geometries import generate_sampling_points
-from sparse_recon.visualization import plot_reconstruction_overview_2d
+from sparse_recon.visualization import (
+    plot_reconstruction_overview_2d,
+    plot_reconstruction_overview_3d,
+)
 
 
 def build_method(name: str):
@@ -23,6 +26,27 @@ def build_method(name: str):
 
 def _parse_csv(value: str, cast):
     return [cast(item.strip()) for item in value.split(",") if item.strip()]
+
+
+def save_experiment_figure(field, samples, predicted_values, title: str, output_path: Path):
+    dim = field.coords.shape[1]
+    if dim == 2:
+        fig, _ = plot_reconstruction_overview_2d(
+            field,
+            samples,
+            predicted_values,
+            title=title,
+        )
+    elif dim == 3:
+        fig, _ = plot_reconstruction_overview_3d(
+            field,
+            samples,
+            predicted_values,
+            title=title,
+        )
+    else:
+        raise ValueError(f"Visualization is not implemented for dim={dim}")
+    fig.savefig(output_path, dpi=150)
 
 
 def run_benchmark_matrix(args) -> list[dict]:
@@ -41,9 +65,11 @@ def run_benchmark_matrix(args) -> list[dict]:
         kind=args.field_kind,
         nx=args.nx,
         ny=args.ny,
+        nz=args.nz,
         seed=args.field_seed,
         noise_sigma=args.field_noise_sigma,
     )
+    dim = field.coords.shape[1]
 
     for method_name in methods:
         for sample_count in sample_counts:
@@ -60,7 +86,7 @@ def run_benchmark_matrix(args) -> list[dict]:
                     sample_coords = generate_sampling_points(
                         geometry=geometry,
                         n_points=sample_count,
-                        dim=2,
+                        dim=dim,
                         seed=args.sample_seed + experiment_index,
                     )
                     method = build_method(method_name)
@@ -77,6 +103,7 @@ def run_benchmark_matrix(args) -> list[dict]:
                                 "sample_count": sample_count,
                                 "noise_sigma": noise_sigma,
                                 "experiment_name": experiment_name,
+                                "dim": dim,
                             }
                         },
                     )
@@ -92,13 +119,13 @@ def run_benchmark_matrix(args) -> list[dict]:
                     with open(experiment_dir / "metrics.json", "w", encoding="utf-8") as f:
                         json.dump(record, f, indent=2)
 
-                    fig, _ = plot_reconstruction_overview_2d(
+                    save_experiment_figure(
                         field,
                         samples,
                         result.predicted_values,
                         title=experiment_name,
+                        output_path=experiment_dir / "overview.png",
                     )
-                    fig.savefig(experiment_dir / "overview.png", dpi=150)
 
     with open(output_dir / "results.jsonl", "w", encoding="utf-8") as f:
         for record in records:
@@ -120,6 +147,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--noise-seed", type=int, default=11)
     parser.add_argument("--nx", type=int, default=64)
     parser.add_argument("--ny", type=int, default=64)
+    parser.add_argument("--nz", type=int, default=24)
     parser.add_argument("--output-dir", default="results/baseline_demo")
     return parser
 

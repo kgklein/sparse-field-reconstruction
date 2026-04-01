@@ -60,3 +60,44 @@ def plot_reconstruction_overview_2d(
     if title:
         fig.suptitle(title)
     return fig, axes
+
+
+def plot_reconstruction_overview_3d(
+    field: FieldSnapshot,
+    samples: SampleSet,
+    predicted_values: np.ndarray,
+    title: str = "",
+):
+    nx, ny, nz = field.grid_shape
+    truth_mag = np.linalg.norm(field.values, axis=1).reshape(nx, ny, nz)
+    pred_mag = np.linalg.norm(predicted_values, axis=1).reshape(nx, ny, nz)
+    error_mag = np.linalg.norm(predicted_values - field.values, axis=1).reshape(nx, ny, nz)
+
+    ix = nx // 2
+    iy = ny // 2
+    iz = nz // 2
+
+    slices = [
+        ("xy", truth_mag[:, :, iz], pred_mag[:, :, iz], error_mag[:, :, iz], samples.coords[:, :2]),
+        ("xz", truth_mag[:, iy, :], pred_mag[:, iy, :], error_mag[:, iy, :], samples.coords[:, [0, 2]]),
+        ("yz", truth_mag[ix, :, :], pred_mag[ix, :, :], error_mag[ix, :, :], samples.coords[:, 1:]),
+    ]
+
+    fig, axes = plt.subplots(3, 3, figsize=(13, 12), constrained_layout=True)
+    for row, (label, truth_slice, pred_slice, error_slice, projected_samples) in enumerate(slices):
+        im0 = axes[row, 0].imshow(truth_slice.T, origin="lower", cmap="viridis", aspect="auto")
+        axes[row, 0].scatter(projected_samples[:, 0], projected_samples[:, 1], s=8, c="white", alpha=0.35)
+        axes[row, 0].set_title(f"{label.upper()} Truth | n={len(samples.coords)}")
+        fig.colorbar(im0, ax=axes[row, 0], shrink=0.8)
+
+        im1 = axes[row, 1].imshow(pred_slice.T, origin="lower", cmap="viridis", aspect="auto")
+        axes[row, 1].set_title(f"{label.upper()} Prediction")
+        fig.colorbar(im1, ax=axes[row, 1], shrink=0.8)
+
+        im2 = axes[row, 2].imshow(error_slice.T, origin="lower", cmap="magma", aspect="auto")
+        axes[row, 2].set_title(f"{label.upper()} Error")
+        fig.colorbar(im2, ax=axes[row, 2], shrink=0.8)
+
+    if title:
+        fig.suptitle(title)
+    return fig, axes

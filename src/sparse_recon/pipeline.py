@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from sparse_recon.metrics.errors import prediction_validity_summary, relative_l2, rmse
-from sparse_recon.metrics.physics import divergence_rmse_2d
+from sparse_recon.metrics.physics import divergence_rmse_2d, divergence_rmse_3d
 from sparse_recon.sampling.sampler import sample_field
 from sparse_recon.types import FieldSnapshot, ReconstructionResult, SampleSet
 
@@ -34,6 +34,25 @@ def evaluate_reconstruction(
             field.grid_shape,
             field.axes["x"],
             field.axes["y"],
+        )
+    is_structured_3d = (
+        include_divergence
+        and field.grid_shape is not None
+        and field.axes is not None
+        and len(field.grid_shape) == 3
+        and field.values.shape[1] == 3
+        and "x" in field.axes
+        and "y" in field.axes
+        and "z" in field.axes
+    )
+    if is_structured_3d:
+        metrics["divergence_rmse"] = divergence_rmse_3d(
+            field.values,
+            pred,
+            field.grid_shape,
+            field.axes["x"],
+            field.axes["y"],
+            field.axes["z"],
         )
 
     return metrics
