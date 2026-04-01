@@ -219,10 +219,14 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--field-kind", default="smooth")
     parser.add_argument("--field-seed", type=int, default=0)
     parser.add_argument("--field-noise-sigma", type=float, default=0.05)
+<<<<<<< HEAD
+    parser.add_argument("--methods", default="rbf,linear,nearest,cubic_spline")
+=======
     parser.add_argument("--simulation-path", default=None)
     parser.add_argument("--methods", default="rbf,linear,nearest")
+>>>>>>> upstream/main
     parser.add_argument("--sample-counts", default="50")
-    parser.add_argument("--geometries", default="random,clustered,multi_probe_like")
+    parser.add_argument("--geometries", default="random,clustered,multi_probe_like,flyby")
     parser.add_argument("--noise-levels", default="0.0,0.02")
     parser.add_argument("--sample-seed", type=int, default=1)
     parser.add_argument("--noise-seed", type=int, default=11)
