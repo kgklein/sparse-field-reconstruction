@@ -12,6 +12,8 @@ def divergence_2d(values: np.ndarray, grid_shape: tuple[int, int], x: np.ndarray
 
 
 def divergence_rmse_2d(truth: np.ndarray, pred: np.ndarray, grid_shape, x, y) -> float:
+    if not np.isfinite(pred).all():
+        return np.nan
     div_truth = divergence_2d(truth, grid_shape, x, y)
     div_pred = divergence_2d(pred, grid_shape, x, y)
     return float(np.sqrt(np.mean((div_truth - div_pred) ** 2)))

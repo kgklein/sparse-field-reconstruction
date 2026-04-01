@@ -1,4 +1,5 @@
 from abc import ABC, abstractmethod
+
 import numpy as np
 
 
@@ -15,3 +16,6 @@ class ReconstructionMethod(ABC):
 
     def reconstruct(self, query_coords: np.ndarray) -> np.ndarray:
         return self.predict(query_coords)
+
+    def get_params(self) -> dict:
+        return {}
