@@ -3,12 +3,14 @@ import json
 from pathlib import Path
 
 from sparse_recon.datasets.synthetic import create_synthetic_field
+from sparse_recon.datasets.helioswarm import load_helioswarm_sample_coords
 from sparse_recon.methods.linear import LinearMethod
 from sparse_recon.methods.nearest import NearestMethod
 from sparse_recon.methods.rbf import RBFMethod
 from sparse_recon.pipeline import run_sampling_experiment
 from sparse_recon.sampling.geometries import generate_sampling_points
 from sparse_recon.visualization import (
+    plot_point_cloud_3d,
     plot_reconstruction_overview_2d,
     plot_reconstruction_overview_3d,
 )
@@ -49,9 +51,33 @@ def save_experiment_figure(field, samples, predicted_values, title: str, output_
     fig.savefig(output_path, dpi=150)
 
 
+def save_helioswarm_formation_figures(
+    formation,
+    scaled_coords,
+    output_dir: Path,
+):
+    physical_fig, _ = plot_point_cloud_3d(
+        formation.relative_positions_km,
+        labels=formation.spacecraft_labels,
+        title="HelioSwarm Formation (km, hub-relative)",
+        axis_labels=("dX (km)", "dY (km)", "dZ (km)"),
+    )
+    physical_fig.savefig(output_dir / "helioswarm_physical.png", dpi=150)
+
+    scaled_fig, _ = plot_point_cloud_3d(
+        scaled_coords,
+        labels=formation.spacecraft_labels,
+        title="HelioSwarm Formation (scaled to box)",
+        axis_labels=("x", "y", "z"),
+    )
+    scaled_fig.savefig(output_dir / "helioswarm_scaled.png", dpi=150)
+
+
 def run_benchmark_matrix(args) -> list[dict]:
     output_dir = Path(args.output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
+    if bool(args.hs_path) != bool(args.hs_time):
+        raise ValueError("HelioSwarm mode requires both --hs-path and --hs-time")
 
     records = []
     experiment_index = 0
@@ -70,25 +96,51 @@ def run_benchmark_matrix(args) -> list[dict]:
         noise_sigma=args.field_noise_sigma,
     )
     dim = field.coords.shape[1]
+    use_helioswarm = bool(args.hs_path and args.hs_time)
+
+    helioswarm_coords = None
+    helioswarm_formation = None
+    helioswarm_transform = None
+    if use_helioswarm:
+        helioswarm_coords, helioswarm_formation, helioswarm_transform = load_helioswarm_sample_coords(
+            args.hs_path,
+            args.hs_time,
+            include_hub=args.include_hub,
+        )
+        if helioswarm_coords.shape[1] != dim:
+            raise ValueError(
+                f"HelioSwarm coordinates are {helioswarm_coords.shape[1]}D but field is {dim}D"
+            )
+
+    sample_count_values = [helioswarm_coords.shape[0]] if use_helioswarm else sample_counts
+    geometry_values = ["helioswarm"] if use_helioswarm else geometries
 
     for method_name in methods:
-        for sample_count in sample_counts:
-            for geometry in geometries:
+        for sample_count in sample_count_values:
+            for geometry in geometry_values:
                 for noise_sigma in noise_levels:
                     experiment_index += 1
                     experiment_name = (
-                        f"{experiment_index:03d}_{args.field_kind}_{method_name}"
-                        f"_{geometry}_{sample_count}_noise{noise_sigma:g}"
+                        f"{experiment_index:03d}_{args.field_kind}_{method_name}_{geometry}"
+                        f"_{sample_count}_noise{noise_sigma:g}"
                     )
                     experiment_dir = output_dir / experiment_name
                     experiment_dir.mkdir(parents=True, exist_ok=True)
 
-                    sample_coords = generate_sampling_points(
-                        geometry=geometry,
-                        n_points=sample_count,
-                        dim=dim,
-                        seed=args.sample_seed + experiment_index,
-                    )
+                    if use_helioswarm:
+                        sample_coords = helioswarm_coords
+                        save_helioswarm_formation_figures(
+                            helioswarm_formation,
+                            helioswarm_coords,
+                            experiment_dir,
+                        )
+                    else:
+                        sample_coords = generate_sampling_points(
+                            geometry=geometry,
+                            n_points=sample_count,
+                            dim=dim,
+                            seed=args.sample_seed + experiment_index,
+                        )
                     method = build_method(method_name)
                     samples, result = run_sampling_experiment(
                         field,
@@ -105,7 +157,20 @@ def run_benchmark_matrix(args) -> list[dict]:
                                 "experiment_name": experiment_name,
                                 "dim": dim,
                             }
-                        },
+                        }
+                        | (
+                            {
+                                "helioswarm": {
+                                    **helioswarm_formation.metadata,
+                                    "raw_positions_km": helioswarm_formation.raw_positions_km.tolist(),
+                                    "relative_positions_km": helioswarm_formation.relative_positions_km.tolist(),
+                                    "scaled_positions_box": helioswarm_coords.tolist(),
+                                    "transform": helioswarm_transform,
+                                }
+                            }
+                            if use_helioswarm
+                            else {}
+                        ),
                     )
 
                     record = {
@@ -148,6 +213,9 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--nx", type=int, default=64)
     parser.add_argument("--ny", type=int, default=64)
     parser.add_argument("--nz", type=int, default=24)
+    parser.add_argument("--hs-path", default=None)
+    parser.add_argument("--hs-time", default=None)
+    parser.add_argument("--include-hub", action="store_true")
     parser.add_argument("--output-dir", default="results/baseline_demo")
     return parser
 
