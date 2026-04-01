@@ -32,14 +32,17 @@ def sample_field(
     *,
     noise_sigma: float = 0.0,
     seed: int = 0,
+    metadata: dict | None = None,
 ) -> SampleSet:
     samples = sample_field_nearest(field, sample_coords)
-    metadata = dict(samples.metadata or {})
-    metadata.update(
+    sample_metadata = dict(samples.metadata or {})
+    sample_metadata.update(
         {
             "field_source": (field.metadata or {}).get("source", "unknown"),
             "field_kind": (field.metadata or {}).get("field_kind", "unknown"),
         }
     )
-    samples = SampleSet(coords=samples.coords, values=samples.values, metadata=metadata)
+    if metadata is not None:
+        sample_metadata.update(metadata)
+    samples = SampleSet(coords=samples.coords, values=samples.values, metadata=sample_metadata)
     return add_noise(samples, sigma=noise_sigma, seed=seed)
