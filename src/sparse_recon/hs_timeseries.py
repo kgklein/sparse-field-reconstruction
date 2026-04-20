@@ -11,7 +11,7 @@ import numpy as np
 HS_COLORS = [
     "#56B4E9",
     "#E69F00",
-    "#000000",
+    "#8E4D4D",
     "#888888",
     "#F0E442",
     "#D55E00",
