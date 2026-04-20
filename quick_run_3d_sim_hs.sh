@@ -5,5 +5,9 @@ PYTHONPATH=src MPLCONFIGDIR=/tmp/mpl python3 scripts/run_baseline.py \
   --noise-levels 0.0 \
   --hs-path /home/kgklein/Codes/HelioSwarm/DRM \
   --hs-time "2029-09-26 00:00:00" \
+  --rho-p-km 100 \
+  --sim-box-x 314.15926 \
+  --sim-box-y 314.15926 \
+  --sim-box-z 1570.79632\
   --include-hub \
   --output-dir /tmp/sparse_recon_sim_hs

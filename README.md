@@ -47,6 +47,7 @@ The repo includes small worked examples as shell scripts:
 - [`quick_run_3d.sh`](/home/kgklein/Codes/sparse-field-reconstruction/quick_run_3d.sh): 3D synthetic smoke run
 - [`quick_run_3d_hs.sh`](/home/kgklein/Codes/sparse-field-reconstruction/quick_run_3d_hs.sh): 3D synthetic field with HelioSwarm sampling
 - [`quick_run_3d_sim_hs.sh`](/home/kgklein/Codes/sparse-field-reconstruction/quick_run_3d_sim_hs.sh): local example of a 3D simulation snapshot with HelioSwarm sampling; update the data paths for your machine before running it
+- [`quick_run_hs_timeseries.sh`](/home/kgklein/Codes/sparse-field-reconstruction/quick_run_hs_timeseries.sh): local example of a moving-observatory HelioSwarm time-series run through a static simulation snapshot
 
 You can run them directly, for example:
 
@@ -55,6 +56,7 @@ You can run them directly, for example:
 ./quick_run_3d.sh
 ./quick_run_3d_hs.sh
 ./quick_run_3d_sim_hs.sh
+./quick_run_hs_timeseries.sh
 ```
 
 You can also run the main script directly.
@@ -112,8 +114,32 @@ PYTHONPATH=src MPLCONFIGDIR=/tmp/mpl python3 scripts/run_baseline.py \
   --noise-levels 0.0 \
   --hs-path /path/to/HelioSwarm/DRM \
   --hs-time "2029-09-26 00:00:00" \
+  --rho-p-km 50 \
+  --sim-box-x 20 \
+  --sim-box-y 20 \
+  --sim-box-z 20 \
   --include-hub \
   --output-dir /tmp/sparse_recon_sim_hs
+```
+
+Moving-observatory HelioSwarm time-series run:
+
+```bash
+PYTHONPATH=src MPLCONFIGDIR=/tmp/mpl python3 scripts/run_hs_timeseries.py \
+  --simulation-path /path/to/ot3D_field_75.npy \
+  --hs-path /path/to/HelioSwarm/DRM \
+  --hs-time "2029-09-26 00:00:00" \
+  --rho-p-km 50 \
+  --sim-box-x 20 \
+  --sim-box-y 20 \
+  --sim-box-z 20 \
+  --vx-kms 15 \
+  --vy-kms 0 \
+  --vz-kms -5 \
+  --dt-seconds 1.0 \
+  --n-steps 120 \
+  --plot-timeseries \
+  --output-dir /tmp/sparse_recon_hs_timeseries
 ```
 
 ## Data Sources
@@ -186,6 +212,12 @@ The main driver script is:
 python3 scripts/run_baseline.py ...
 ```
 
+The moving-observatory time-series driver is:
+
+```bash
+python3 scripts/run_hs_timeseries.py ...
+```
+
 Important arguments:
 
 - `--data-source`: choose `synthetic` or `simulation`
@@ -193,6 +225,8 @@ Important arguments:
 - `--simulation-path`: path to a `.npy` simulation snapshot when using `--data-source simulation`
 - `--hs-path`: HelioSwarm `.cdf` file or directory of `.cdf` files
 - `--hs-time`: requested HelioSwarm timestamp; nearest available sample is used
+- `--rho-p-km`: proton gyroradius in km for simulation-backed HelioSwarm runs
+- `--sim-box-x`, `--sim-box-y`, `--sim-box-z`: full simulation-box lengths in units of `rho_p` for simulation-backed HelioSwarm runs
 - `--include-hub`: include the hub spacecraft in HelioSwarm-driven sampling
 - `--output-dir`: directory for metrics and plots
 
@@ -200,8 +234,10 @@ Useful defaults:
 
 - if `--data-source` is omitted, the script uses synthetic data
 - HelioSwarm sampling is only activated when both `--hs-path` and `--hs-time` are provided
+- simulation-backed HelioSwarm runs also require `--rho-p-km` and all three `--sim-box-*` flags
 - `--include-hub` only matters for HelioSwarm-backed runs
 - baseline methods currently available are `nearest`, `linear`, and `rbf`
+- moving-observatory time-series runs are simulation-only and always require all 9 valid HelioSwarm spacecraft
 
 ## Outputs
 
@@ -216,7 +252,10 @@ Common outputs:
 Additional HelioSwarm outputs:
 
 - `helioswarm_physical.png`: spacecraft formation in physical hub-relative coordinates
-- `helioswarm_scaled.png`: spacecraft formation after scaling into the reconstruction box
+- `helioswarm_scaled.png`: spacecraft formation after scaling into the reconstruction box, or in simulation coordinates (`rho_p`) for simulation-backed HelioSwarm runs
+- `helioswarm_timeseries.csv`: moving-observatory time-series table with positions and sampled `Bx`, `By`, `Bz`
+- `helioswarm_timeseries_metadata.json`: metadata for the moving-observatory run, including transform and velocity details
+- `helioswarm_timeseries.png`: optional three-panel `Bx`/`By`/`Bz` line plot for all 9 spacecraft
 
 ## Repository Structure
 
@@ -240,6 +279,7 @@ Important directories:
 - simulation `.npy` snapshots are currently assumed to live on a uniform unit box `[0, 1]^3`
 - only single-snapshot simulation files are supported right now
 - HelioSwarm support currently uses static snapshot sampling, not full time-evolving trajectories
+- moving-observatory HelioSwarm time-series runs currently sample a static simulation snapshot while translating the observatory rigidly with periodic wrapping
 - large 3D simulation reconstructions can be expensive, especially for full `448^3` query volumes
 - for large real-data runs, a full reconstruction may take significantly longer than the small quick-run examples
 - the baseline methods are `nearest`, `linear`, and `rbf`; `rbf` is the most practical default for current demos

@@ -227,3 +227,39 @@ def plot_point_cloud_3d(
     ax.set_zlabel(axis_labels[2])
     ax.set_title(title)
     return fig, ax
+
+
+def plot_hs_timeseries_components(
+    records: list[dict],
+    *,
+    spacecraft_labels: list[str],
+    spacecraft_colors: dict[str, str],
+    title: str = "",
+):
+    component_specs = [
+        ("bx", "Bx"),
+        ("by", "By"),
+        ("bz", "Bz"),
+    ]
+    fig, axes = plt.subplots(3, 1, figsize=(12, 9), sharex=True, constrained_layout=True)
+
+    for ax, (key, label) in zip(axes, component_specs):
+        for spacecraft_label in spacecraft_labels:
+            label_records = [record for record in records if record["spacecraft_label"] == spacecraft_label]
+            times = [record["time_seconds"] for record in label_records]
+            values = [record[key] for record in label_records]
+            ax.plot(
+                times,
+                values,
+                label=spacecraft_label,
+                color=spacecraft_colors[spacecraft_label],
+                linewidth=1.8,
+            )
+        ax.set_ylabel(label)
+        ax.grid(alpha=0.3)
+
+    axes[-1].set_xlabel("time_seconds")
+    axes[0].legend(loc="upper right", ncol=3, fontsize=9)
+    if title:
+        fig.suptitle(title)
+    return fig, axes

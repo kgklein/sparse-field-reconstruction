@@ -214,12 +214,50 @@ def scale_formation_to_box(
     return scaled_coords, metadata
 
 
+def place_formation_in_simulation_box(
+    coords_km: np.ndarray,
+    *,
+    rho_p_km: float,
+    sim_box_rho_p: tuple[float, float, float],
+) -> tuple[np.ndarray, dict]:
+    coords_km = np.asarray(coords_km, dtype=float)
+    if rho_p_km <= 0:
+        raise ValueError(f"rho_p_km must be positive; got {rho_p_km}")
+
+    sim_box = np.asarray(sim_box_rho_p, dtype=float)
+    if sim_box.shape != (3,) or np.any(sim_box <= 0):
+        raise ValueError(
+            "sim_box_rho_p must contain three positive axis lengths; "
+            f"got {sim_box_rho_p}"
+        )
+
+    coords_rho_p = coords_km / rho_p_km
+    centroid_rho_p = coords_rho_p.mean(axis=0)
+    box_center_rho_p = sim_box / 2.0
+    translated_coords = coords_rho_p - centroid_rho_p + box_center_rho_p
+
+    metadata = {
+        "mode": "km_to_rho_p_centered_box",
+        "rho_p_km": float(rho_p_km),
+        "sim_box_rho_p": sim_box.tolist(),
+        "formation_centroid_rho_p": centroid_rho_p.tolist(),
+        "placement_center_rho_p": box_center_rho_p.tolist(),
+        "coords_rho_p_before_translation": coords_rho_p.tolist(),
+        "coords_rho_p_after_translation": translated_coords.tolist(),
+        "translated_min_rho_p": translated_coords.min(axis=0).tolist(),
+        "translated_max_rho_p": translated_coords.max(axis=0).tolist(),
+    }
+    return translated_coords, metadata
+
+
 def load_helioswarm_sample_coords(
     path: str | Path,
     requested_time: str,
     *,
     include_hub: bool = False,
     spacecraft_subset: list[str] | None = None,
+    rho_p_km: float | None = None,
+    sim_box_rho_p: tuple[float, float, float] | None = None,
 ) -> tuple[np.ndarray, HelioSwarmFormationSnapshot, dict]:
     data = load_helioswarm_trajectory_data(path)
     formation = select_helioswarm_hour(
@@ -228,7 +266,19 @@ def load_helioswarm_sample_coords(
         include_hub=include_hub,
         spacecraft_subset=spacecraft_subset,
     )
-    sample_coords_box, transform_metadata = scale_formation_to_box(
-        formation.relative_positions_km,
-    )
+    if rho_p_km is not None or sim_box_rho_p is not None:
+        if rho_p_km is None or sim_box_rho_p is None:
+            raise ValueError(
+                "Both rho_p_km and sim_box_rho_p are required for simulation-space "
+                "HelioSwarm placement"
+            )
+        sample_coords_box, transform_metadata = place_formation_in_simulation_box(
+            formation.relative_positions_km,
+            rho_p_km=rho_p_km,
+            sim_box_rho_p=sim_box_rho_p,
+        )
+    else:
+        sample_coords_box, transform_metadata = scale_formation_to_box(
+            formation.relative_positions_km,
+        )
     return sample_coords_box, formation, transform_metadata

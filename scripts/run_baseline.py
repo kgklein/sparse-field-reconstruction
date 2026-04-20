@@ -31,6 +31,20 @@ def _parse_csv(value: str, cast):
     return [cast(item.strip()) for item in value.split(",") if item.strip()]
 
 
+def _validate_positive(value, *, name: str):
+    if value is None or value <= 0:
+        raise ValueError(f"{name} must be provided as a positive value")
+    return float(value)
+
+
+def _get_simulation_box_args(args) -> tuple[float, float, float]:
+    return (
+        _validate_positive(args.sim_box_x, name="--sim-box-x"),
+        _validate_positive(args.sim_box_y, name="--sim-box-y"),
+        _validate_positive(args.sim_box_z, name="--sim-box-z"),
+    )
+
+
 def load_field(args):
     if args.data_source == "synthetic":
         return create_synthetic_field(
@@ -73,6 +87,9 @@ def save_helioswarm_formation_figures(
     formation,
     scaled_coords,
     output_dir: Path,
+    *,
+    scaled_title: str = "HelioSwarm Formation (scaled to box)",
+    scaled_axis_labels: tuple[str, str, str] = ("x", "y", "z"),
 ):
     physical_fig, _ = plot_point_cloud_3d(
         formation.relative_positions_km,
@@ -85,8 +102,8 @@ def save_helioswarm_formation_figures(
     scaled_fig, _ = plot_point_cloud_3d(
         scaled_coords,
         labels=formation.spacecraft_labels,
-        title="HelioSwarm Formation (scaled to box)",
-        axis_labels=("x", "y", "z"),
+        title=scaled_title,
+        axis_labels=scaled_axis_labels,
     )
     scaled_fig.savefig(output_dir / "helioswarm_scaled.png", dpi=150)
 
@@ -107,9 +124,18 @@ def run_benchmark_matrix(args) -> list[dict]:
     geometries = _parse_csv(args.geometries, str)
     noise_levels = _parse_csv(args.noise_levels, float)
 
+    use_helioswarm = bool(args.hs_path and args.hs_time)
+    use_simulation_box_scaling = use_helioswarm and args.data_source == "simulation"
+
+    sim_box_rho_p = None
+    if use_simulation_box_scaling:
+        rho_p_km = _validate_positive(args.rho_p_km, name="--rho-p-km")
+        sim_box_rho_p = _get_simulation_box_args(args)
+    else:
+        rho_p_km = args.rho_p_km
+
     field = load_field(args)
     dim = field.coords.shape[1]
-    use_helioswarm = bool(args.hs_path and args.hs_time)
 
     helioswarm_coords = None
     helioswarm_formation = None
@@ -119,6 +145,8 @@ def run_benchmark_matrix(args) -> list[dict]:
             args.hs_path,
             args.hs_time,
             include_hub=args.include_hub,
+            rho_p_km=rho_p_km if use_simulation_box_scaling else None,
+            sim_box_rho_p=sim_box_rho_p,
         )
         if helioswarm_coords.shape[1] != dim:
             raise ValueError(
@@ -146,6 +174,16 @@ def run_benchmark_matrix(args) -> list[dict]:
                             helioswarm_formation,
                             helioswarm_coords,
                             experiment_dir,
+                            scaled_title=(
+                                "HelioSwarm Formation (simulation coordinates, rho_p)"
+                                if use_simulation_box_scaling
+                                else "HelioSwarm Formation (scaled to box)"
+                            ),
+                            scaled_axis_labels=(
+                                ("x (rho_p)", "y (rho_p)", "z (rho_p)")
+                                if use_simulation_box_scaling
+                                else ("x", "y", "z")
+                            ),
                         )
                     else:
                         sample_coords = generate_sampling_points(
@@ -178,7 +216,16 @@ def run_benchmark_matrix(args) -> list[dict]:
                                     **helioswarm_formation.metadata,
                                     "raw_positions_km": helioswarm_formation.raw_positions_km.tolist(),
                                     "relative_positions_km": helioswarm_formation.relative_positions_km.tolist(),
-                                    "scaled_positions_box": helioswarm_coords.tolist(),
+                                    "scaled_positions_box": (
+                                        helioswarm_coords.tolist()
+                                        if not use_simulation_box_scaling
+                                        else None
+                                    ),
+                                    "simulation_positions_rho_p": (
+                                        helioswarm_coords.tolist()
+                                        if use_simulation_box_scaling
+                                        else None
+                                    ),
                                     "transform": helioswarm_transform,
                                 }
                             }
@@ -231,6 +278,10 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--nz", type=int, default=24)
     parser.add_argument("--hs-path", default=None)
     parser.add_argument("--hs-time", default=None)
+    parser.add_argument("--rho-p-km", type=float, default=None)
+    parser.add_argument("--sim-box-x", type=float, default=None)
+    parser.add_argument("--sim-box-y", type=float, default=None)
+    parser.add_argument("--sim-box-z", type=float, default=None)
     parser.add_argument("--include-hub", action="store_true")
     parser.add_argument("--output-dir", default="results/baseline_demo")
     return parser
