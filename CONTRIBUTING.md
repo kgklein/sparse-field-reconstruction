@@ -1,127 +1,174 @@
-##Contributing Guide
+## Contributing Guide
 
-Thank you for contributing to the Sparse Field Reconstruction project!
+Thank you for contributing to the Sparse Field Reconstruction project.
 
-This repository is designed to support a collaborative research effort. The goal is to maintain a clean, reproducible, and comparable workflow across all contributions.
+This repository supports a collaborative research effort. The goal is to maintain a clean,
+reproducible, and comparable workflow across reconstruction experiments, simulation-backed
+HelioSwarm runs, and moving-observatory time-series analyses.
 
-#Core principles
--Keep main stable and runnable at all times
--Prefer small, focused contributions
--All methods must be comparable using shared datasets and metrics
--Reproducibility matters as much as performance
+## Core Principles
 
-Workflow overview
+- Keep `main` stable and runnable at all times
+- Prefer small, focused contributions
+- Use shared datasets and comparable workflows whenever possible
+- Treat reproducibility as just as important as performance
+- Document and test coordinate transforms carefully, especially when moving between HelioSwarm `km`, `rho_p`, and simulation-box coordinates
 
-1 Create a feature branch
+## Workflow Overview
 
-Do not work directly on main.
+### 1. Create a feature branch
 
+Do not work directly on `main`.
+
+```bash
 git checkout -b feature/your-feature-name
+```
 
 Examples:
--feature/rbf-baseline
--feature/divergence-metric
--feature/simulation-loader
 
-2 Make your changes
+- `feature/rbf-baseline`
+- `feature/divergence-metric`
+- `feature/simulation-loader`
+- `feature/hs-timeseries-interpolation`
+
+### 2. Make your changes
 
 Keep changes focused:
--one method
--one metric
--one dataset
--one experiment
+
+- one method
+- one metric
+- one dataset path
+- one experiment workflow
+- one documentation or visualization improvement
 
 Avoid mixing unrelated changes in a single branch.
 
-3 Test your work
+### 3. Test your work
 
 Before submitting a pull request:
 
-Ensure the baseline script still runs:
+- ensure the relevant runnable scripts still work
+- verify your feature works on at least one shared dataset or example input
+- add or update tests when you change sampling behavior, interpolation, output schema, or transform logic
 
-python scripts/run_baseline.py
+Examples of useful checks:
 
-Verify your feature works on at least one shared dataset
+- `python scripts/run_baseline.py ...`
+- `python scripts/run_hs_timeseries.py ...`
+- `pytest`
 
-4 Open a pull request
+### 4. Open a pull request
 
 When ready:
--Push your branch
--Open a pull request into main
+
+- push your branch
+- open a pull request into `main`
 
 Include:
--a short description of what you added
--how you tested it
--any relevant results or figures
--Review and merge
--Pull requests will be reviewed before merging
--Do not merge your own PR unless explicitly instructed
--main is protected to ensure stability
 
-##Contribution guidelines
+- a short description of what you added
+- how you tested it
+- any relevant results or figures
+- any important coordinate-system, transform, or metadata changes
 
-#Methods
+Pull requests will be reviewed before merging. Do not merge your own PR unless explicitly instructed.
+
+## Contribution Guidelines
+
+### Reconstruction methods
 
 All new reconstruction methods should:
--follow the shared interface in methods/base.py
--be runnable within the existing pipeline
--be tested against at least one baseline method
 
-#Metrics
+- follow the shared interface in `methods/base.py`
+- be runnable within the existing pipeline
+- be tested against at least one baseline method
+
+### Time-series and interpolation workflows
+
+Contributions may also target moving-observatory analyses. These should:
+
+- fit the existing `scripts/run_hs_timeseries.py` workflow when appropriate
+- preserve or clearly document output schema changes
+- test structured-grid sampling behavior carefully
+- explicitly document any change to interpolation behavior such as `nearest` versus `trilinear`
+
+### Coordinate transforms and rescaling
+
+Changes to simulation-backed HelioSwarm workflows should:
+
+- preserve clear semantics between physical `km`, `rho_p`, and simulation-box coordinates
+- document any change to `rho_p_km`, `sim_box_rho_p`, or placement logic
+- include tests for transform metadata and edge cases when modifying rescaling behavior
+
+### Metrics
 
 All evaluation metrics should:
--operate on shared data structures
--be numerically stable
--handle missing or invalid values (e.g., NaNs)
 
-Datasets
--Do not commit large datasets to the repository
--Use external storage for large files
--Ensure loaders are configurable via paths or environment variables
+- operate on shared data structures
+- be numerically stable
+- handle missing or invalid values such as `NaN`s
 
-Experiments
--Use shared datasets and configurations when possible
--Save outputs (metrics, figures) in a reproducible format
--Avoid one-off scripts that cannot be reused
+### Datasets
 
-Coding style:
--Follow standard Python conventions
--Use clear variable names
--Prefer readable code over clever code
+- Do not commit large datasets to the repository
+- Use external storage for large files
+- Ensure loaders are configurable via paths or environment variables
+- Keep simulation and HelioSwarm inputs documented clearly when adding new workflows
+
+### Experiments and outputs
+
+- Use shared datasets and configurations when possible
+- Save outputs such as metrics, figures, CSV tables, and metadata in reproducible formats
+- Avoid one-off scripts that cannot be reused
+- If you change metadata or CSV outputs, add tests that verify the new schema
+
+### Coding style
+
+- Follow standard Python conventions
+- Use clear variable names
+- Prefer readable code over clever code
 
 Optional tools:
 
+```bash
 black .
 ruff check .
+```
 
-##Commit guidelines
+## Commit Guidelines
 
-#Use clear commit messages
+Use clear commit messages.
 
 Examples:
--Add RBF reconstruction baseline
--Implement divergence metric for 2D fields
--Add synthetic dataset generator
+
+- `Add RBF reconstruction baseline`
+- `Implement divergence metric for 2D fields`
+- `Add synthetic dataset generator`
+- `Add trilinear interpolation for HS time-series sampling`
 
 Avoid:
--fix stuff
--updates
 
-#What success looks like
+- `fix stuff`
+- `updates`
+
+## What Success Looks Like
 
 A strong contribution:
--integrates cleanly into the existing pipeline
--runs on shared datasets
--compares against a baseline
--produces interpretable results
 
-#Questions?
+- integrates cleanly into the existing pipeline
+- runs on shared datasets or documented example inputs
+- compares against a baseline when applicable
+- produces interpretable results
+- preserves or improves reproducibility
+- documents any transform or rescaling assumptions clearly
+
+## Questions?
 
 If you're unsure about direction or scope:
 
--open an issue
--ask early rather than late
+- open an issue
+- ask early rather than late
 
-#Final note
+## Final Note
 
 This is a collaborative research project. Clear, simple, and reproducible contributions will have the most impact.

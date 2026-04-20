@@ -230,27 +230,29 @@ def plot_point_cloud_3d(
 
 
 def plot_hs_timeseries_components(
-    records: list[dict],
+    times: np.ndarray,
     *,
     spacecraft_labels: list[str],
     spacecraft_colors: dict[str, str],
+    bx: np.ndarray,
+    by: np.ndarray,
+    bz: np.ndarray,
     title: str = "",
 ):
     component_specs = [
-        ("bx", "Bx"),
-        ("by", "By"),
-        ("bz", "Bz"),
+        (bx, "Bx"),
+        (by, "By"),
+        (bz, "Bz"),
     ]
     fig, axes = plt.subplots(3, 1, figsize=(12, 9), sharex=True, constrained_layout=True)
 
-    for ax, (key, label) in zip(axes, component_specs):
-        for spacecraft_label in spacecraft_labels:
-            label_records = [record for record in records if record["spacecraft_label"] == spacecraft_label]
-            times = [record["time_seconds"] for record in label_records]
-            values = [record[key] for record in label_records]
+    times = np.asarray(times, dtype=float)
+    for ax, (values_by_spacecraft, label) in zip(axes, component_specs):
+        values_by_spacecraft = np.asarray(values_by_spacecraft, dtype=float)
+        for index, spacecraft_label in enumerate(spacecraft_labels):
             ax.plot(
                 times,
-                values,
+                values_by_spacecraft[index],
                 label=spacecraft_label,
                 color=spacecraft_colors[spacecraft_label],
                 linewidth=1.8,

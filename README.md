@@ -18,6 +18,7 @@ Supported inputs now include:
 - synthetic 2D and 3D benchmark fields
 - HelioSwarm-driven 3D sample positions from CDF trajectory files
 - dense 3D simulation snapshots stored as `.npy`
+- moving-observatory HelioSwarm time-series sampling through a static simulation snapshot
 
 The main user entrypoint is [`scripts/run_baseline.py`](/home/kgklein/Codes/sparse-field-reconstruction/scripts/run_baseline.py).
 
@@ -138,9 +139,15 @@ PYTHONPATH=src MPLCONFIGDIR=/tmp/mpl python3 scripts/run_hs_timeseries.py \
   --vz-kms -5 \
   --dt-seconds 1.0 \
   --n-steps 120 \
+  --sampling-method trilinear \
   --plot-timeseries \
   --output-dir /tmp/sparse_recon_hs_timeseries
 ```
+
+This time-series mode samples the simulation field directly along a moving 9-spacecraft
+HelioSwarm formation. It does not reconstruct the field over the full domain. Instead, it
+generates spacecraft trajectories through the simulation box, applies periodic wrapping at the
+box boundaries, and writes sampled `Bx`, `By`, and `Bz` values for each spacecraft and timestep.
 
 ## Data Sources
 
@@ -204,6 +211,33 @@ Notes for current HelioSwarm data:
 - DRM `v0.1.0` files can include an `N/A` placeholder slot in `Spacecraft_Label`
 - the loader skips empty CDFs and ignores that placeholder slot automatically
 
+## Coordinate Systems / Rescaling
+
+Simulation-backed HelioSwarm workflows use two coordinate systems:
+
+- HelioSwarm spacecraft positions start in physical `km`
+- simulation boxes are specified in proton gyroradius units `rho_p`
+
+For simulation-backed reconstruction runs and moving-observatory time-series runs, the current
+transform pipeline is:
+
+1. load HelioSwarm positions from CDF files in `km`
+2. convert them to hub-relative coordinates in `km`
+3. divide by `--rho-p-km` to convert the formation from `km` to `rho_p`
+4. use `--sim-box-x`, `--sim-box-y`, and `--sim-box-z` as the full simulation-box lengths in `rho_p`
+5. translate the HelioSwarm formation so its centroid sits at the center of that simulation box
+
+This simulation-backed transform is recorded in metadata as `km_to_rho_p_centered_box`.
+
+That behavior is different from the legacy synthetic/reconstruction-box scaling path:
+
+- synthetic HelioSwarm runs scale the formation into a unit reconstruction box
+- simulation-backed HelioSwarm runs preserve the physical `rho_p` box dimensions supplied by the user
+
+For moving-observatory time-series runs, the simulation snapshot is interpreted as a structured
+physical box in `rho_p`, and the spacecraft positions are sampled directly in those `rho_p`
+coordinates.
+
 ## Main Script
 
 The main driver script is:
@@ -227,6 +261,11 @@ Important arguments:
 - `--hs-time`: requested HelioSwarm timestamp; nearest available sample is used
 - `--rho-p-km`: proton gyroradius in km for simulation-backed HelioSwarm runs
 - `--sim-box-x`, `--sim-box-y`, `--sim-box-z`: full simulation-box lengths in units of `rho_p` for simulation-backed HelioSwarm runs
+- `--vx-kms`, `--vy-kms`, `--vz-kms`: observatory translation velocity components in km/s for moving-observatory time-series runs
+- `--dt-seconds`: timestep cadence for moving-observatory time-series runs
+- `--n-steps`: number of time samples for moving-observatory time-series runs
+- `--sampling-method`: moving-observatory sampling method, `nearest` or `trilinear`
+- `--plot-timeseries`: save the optional three-panel `Bx`/`By`/`Bz` line plot for moving-observatory runs
 - `--include-hub`: include the hub spacecraft in HelioSwarm-driven sampling
 - `--output-dir`: directory for metrics and plots
 
@@ -238,6 +277,8 @@ Useful defaults:
 - `--include-hub` only matters for HelioSwarm-backed runs
 - baseline methods currently available are `nearest`, `linear`, and `rbf`
 - moving-observatory time-series runs are simulation-only and always require all 9 valid HelioSwarm spacecraft
+- moving-observatory time-series runs support `--sampling-method nearest` and `--sampling-method trilinear`; `trilinear` is the default
+- moving-observatory interpolation uses periodic boundary handling at the simulation-box edges
 
 ## Outputs
 
@@ -253,8 +294,8 @@ Additional HelioSwarm outputs:
 
 - `helioswarm_physical.png`: spacecraft formation in physical hub-relative coordinates
 - `helioswarm_scaled.png`: spacecraft formation after scaling into the reconstruction box, or in simulation coordinates (`rho_p`) for simulation-backed HelioSwarm runs
-- `helioswarm_timeseries.csv`: moving-observatory time-series table with positions and sampled `Bx`, `By`, `Bz`
-- `helioswarm_timeseries_metadata.json`: metadata for the moving-observatory run, including transform and velocity details
+- `helioswarm_timeseries.csv`: moving-observatory time-series table with one row per `(step, spacecraft)`, including spacecraft positions in `rho_p` and sampled `Bx`, `By`, `Bz`
+- `helioswarm_timeseries_metadata.json`: metadata for the moving-observatory run, including transform details such as `rho_p_km`, `sim_box_rho_p`, initial transformed coordinates, velocity summaries, and output paths
 - `helioswarm_timeseries.png`: optional three-panel `Bx`/`By`/`Bz` line plot for all 9 spacecraft
 
 ## Repository Structure
@@ -280,6 +321,8 @@ Important directories:
 - only single-snapshot simulation files are supported right now
 - HelioSwarm support currently uses static snapshot sampling, not full time-evolving trajectories
 - moving-observatory HelioSwarm time-series runs currently sample a static simulation snapshot while translating the observatory rigidly with periodic wrapping
+- reconstruction-backed HelioSwarm runs use one static HelioSwarm snapshot as the sample geometry for a field reconstruction
+- moving-observatory time-series runs use one static HelioSwarm snapshot as the initial formation, then move that formation through a static simulation field
 - large 3D simulation reconstructions can be expensive, especially for full `448^3` query volumes
 - for large real-data runs, a full reconstruction may take significantly longer than the small quick-run examples
 - the baseline methods are `nearest`, `linear`, and `rbf`; `rbf` is the most practical default for current demos
