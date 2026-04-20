@@ -1,0 +1,15 @@
+PYTHONPATH=src MPLCONFIGDIR=/tmp/mpl python3 scripts/run_hs_timeseries.py \
+  --simulation-path /home/kgklein/Codes/gkeyll/data/ot3D_field_75.npy \
+  --hs-path /home/kgklein/Codes/HelioSwarm/DRM \
+  --hs-time "2029-09-26 00:00:00" \
+  --rho-p-km 50 \
+  --sim-box-x 20 \
+  --sim-box-y 20 \
+  --sim-box-z 20 \
+  --vx-kms 15 \
+  --vy-kms 0 \
+  --vz-kms -5 \
+  --dt-seconds 1.0 \
+  --n-steps 120 \
+  --plot-timeseries \
+  --output-dir /tmp/sparse_recon_hs_timeseries
