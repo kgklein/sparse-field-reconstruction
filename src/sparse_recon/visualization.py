@@ -1,4 +1,5 @@
 import matplotlib.pyplot as plt
+from matplotlib.colors import LinearSegmentedColormap
 import numpy as np
 
 from sparse_recon.types import FieldSnapshot, SampleSet
@@ -325,6 +326,12 @@ def _segment_wrapped_path(coords: np.ndarray, *, box_spans: tuple[float, float])
     return x_values, z_values
 
 
+MORELAND_RED_GREY_BLUE = LinearSegmentedColormap.from_list(
+    "moreland_red_grey_blue",
+    ["#3B4CC0", "#BDBDBD", "#B40426"],
+)
+
+
 def plot_hs_timeseries_geometry(
     field,
     *,
@@ -366,18 +373,43 @@ def plot_hs_timeseries_geometry(
     z = np.asarray(field.axes["z"], dtype=float)
     magnitude = np.linalg.norm(np.asarray(field.values, dtype=float), axis=-1)
     y_index = field.grid_shape[1] // 2
-    xz_slice = magnitude[:, y_index, :].T
+    xz_mag = magnitude[:, y_index, :].T
+    xz_bx = np.asarray(field.values[:, y_index, :, 0], dtype=float).T
+    xz_by = np.asarray(field.values[:, y_index, :, 1], dtype=float).T
+    xz_bz = np.asarray(field.values[:, y_index, :, 2], dtype=float).T
+    xz_bz = xz_bz - np.mean(xz_bz)
     relative_extent = float(np.max(np.abs(hub_relative_positions_km)))
     axis_limit = relative_extent * 1.05 if relative_extent > 0.0 else 1.0
 
     fig = plt.figure(figsize=(12, 10), constrained_layout=True)
-    grid = fig.add_gridspec(2, 3, width_ratios=(1.0, 1.0, 0.05))
+    grid = fig.add_gridspec(2, 2, width_ratios=(1.0, 1.7))
     axes = np.empty((2, 2), dtype=object)
     axes[0, 0] = fig.add_subplot(grid[0, 0])
     axes[1, 0] = fig.add_subplot(grid[1, 0])
-    axes[0, 1] = fig.add_subplot(grid[0, 1])
-    axes[1, 1] = fig.add_subplot(grid[1, 1])
-    colorbar_ax = fig.add_subplot(grid[0, 2])
+    slice_grid = grid[0, 1].subgridspec(
+        1,
+        6,
+        width_ratios=(1.0, 1.0, 1.0, 1.0, 0.08, 0.08),
+        wspace=0.05,
+    )
+    bottom_right_grid = grid[1, 1].subgridspec(
+        1,
+        6,
+        width_ratios=(1.0, 1.0, 1.0, 1.0, 0.08, 0.08),
+        wspace=0.05,
+    )
+    axes[1, 1] = fig.add_subplot(bottom_right_grid[0, 0:4])
+    slice_axes = [
+        fig.add_subplot(slice_grid[0, 0]),
+        fig.add_subplot(slice_grid[0, 1]),
+        fig.add_subplot(slice_grid[0, 2]),
+        fig.add_subplot(slice_grid[0, 3]),
+    ]
+    axes[0, 1] = slice_axes[0]
+    magnitude_colorbar_ax = fig.add_subplot(slice_grid[0, 4])
+    component_colorbar_ax = fig.add_subplot(slice_grid[0, 5])
+    for ax in slice_axes[1:]:
+        ax.sharey(slice_axes[0])
 
     _plot_hs_projected_positions(
         axes[0, 0],
@@ -386,9 +418,9 @@ def plot_hs_timeseries_geometry(
         spacecraft_colors=spacecraft_colors,
         x_index=0,
         y_index=2,
-        x_label="Delta X (km)",
-        y_label="Delta Z (km)",
-        title="Hub-Relative X-Z",
+        x_label=r"$\Delta X$ (km)",
+        y_label=r"$\Delta Z$ (km)",
+        title=r"Hub-Relative $\Delta X$-$\Delta Z$",
         axis_limit=axis_limit,
     )
     _plot_hs_projected_positions(
@@ -398,9 +430,9 @@ def plot_hs_timeseries_geometry(
         spacecraft_colors=spacecraft_colors,
         x_index=0,
         y_index=1,
-        x_label="Delta X (km)",
-        y_label="Delta Y (km)",
-        title="Hub-Relative X-Y",
+        x_label=r"$\Delta X$ (km)",
+        y_label=r"$\Delta Y$ (km)",
+        title=r"Hub-Relative $\Delta X$-$\Delta Y$",
         axis_limit=axis_limit,
     )
     _plot_hs_projected_positions(
@@ -408,24 +440,46 @@ def plot_hs_timeseries_geometry(
         hub_relative_positions_km,
         spacecraft_labels=spacecraft_labels,
         spacecraft_colors=spacecraft_colors,
-        x_index=1,
-        y_index=2,
-        x_label="Delta Y (km)",
-        y_label="Delta Z (km)",
-        title="Hub-Relative Y-Z",
+        x_index=2,
+        y_index=1,
+        x_label=r"$\Delta Z$ (km)",
+        y_label=r"$\Delta Y$ (km)",
+        title=r"Hub-Relative $\Delta Z$-$\Delta Y$",
         axis_limit=axis_limit,
     )
 
     extent = [float(x[0]), float(x[-1]), float(z[0]), float(z[-1])]
     box_spans = (extent[1] - extent[0], extent[3] - extent[2])
-    im = axes[0, 1].imshow(
-        xz_slice,
-        origin="lower",
-        cmap="viridis",
-        aspect="auto",
-        extent=extent,
+    component_limit = float(
+        np.max(np.abs(np.stack((xz_bx, xz_by, xz_bz), axis=0)))
     )
-    fig.colorbar(im, cax=colorbar_ax, label="|B|")
+    if component_limit == 0.0:
+        component_limit = 1.0
+    slice_specs = [
+        (slice_axes[0], xz_mag, "viridis", None, None, r"$|B|$"),
+        (slice_axes[1], xz_bx, MORELAND_RED_GREY_BLUE, -component_limit, component_limit, r"$B_x$"),
+        (slice_axes[2], xz_by, MORELAND_RED_GREY_BLUE, -component_limit, component_limit, r"$B_y$"),
+        (slice_axes[3], xz_bz, MORELAND_RED_GREY_BLUE, -component_limit, component_limit, r"$B_z$"),
+    ]
+    magnitude_image = None
+    component_image = None
+    for ax, field_slice, cmap, vmin, vmax, slice_title in slice_specs:
+        image = ax.imshow(
+            field_slice,
+            origin="lower",
+            cmap=cmap,
+            aspect="auto",
+            extent=extent,
+            vmin=vmin,
+            vmax=vmax,
+        )
+        if slice_title == r"$|B|$":
+            magnitude_image = image
+        else:
+            component_image = image
+        ax.set_title(slice_title)
+    fig.colorbar(magnitude_image, cax=magnitude_colorbar_ax, label=r"$|B|$")
+    fig.colorbar(component_image, cax=component_colorbar_ax, label=r"$B_{x,y,z}$")
     trajectory_x = trajectory_coords_rho_p[:, :, 0]
     trajectory_z = trajectory_coords_rho_p[:, :, 2]
     x_min = min(extent[0], float(np.min(trajectory_x)))
@@ -438,32 +492,34 @@ def plot_hs_timeseries_geometry(
         coords = trajectory_coords_rho_p[:, index, :]
         is_hub = label == "H"
         x_path, z_path = _segment_wrapped_path(coords, box_spans=box_spans)
-        axes[0, 1].plot(
-            x_path,
-            z_path,
-            color=spacecraft_colors[label],
-            linewidth=1.8,
-            alpha=0.95,
-            zorder=3,
-        )
-        axes[0, 1].scatter(
-            initial_coords_rho_p[index, 0],
-            initial_coords_rho_p[index, 2],
-            s=80 if is_hub else 65,
-            marker="o",
-            facecolors=spacecraft_colors[label],
-            edgecolors="#111111",
-            linewidths=1.2 if is_hub else 1.0,
-            zorder=4,
-        )
-    axes[0, 1].set_xlabel("X (rho_p)")
-    axes[0, 1].set_ylabel("Z (rho_p)")
-    axes[0, 1].set_title("Simulation X-Z Slice")
-    axes[0, 1].grid(alpha=0.2)
-    axes[0, 1].set_xlim(x_min - x_pad, x_max + x_pad)
-    axes[0, 1].set_ylim(z_min - z_pad, z_max + z_pad)
-    axes[0, 1].set_aspect("equal")
-    axes[0, 1].set_anchor("C")
+        for ax in slice_axes:
+            ax.plot(
+                x_path,
+                z_path,
+                color=spacecraft_colors[label],
+                linewidth=1.8,
+                alpha=0.95,
+                zorder=3,
+            )
+            ax.scatter(
+                initial_coords_rho_p[index, 0],
+                initial_coords_rho_p[index, 2],
+                s=80 if is_hub else 65,
+                marker="o",
+                facecolors=spacecraft_colors[label],
+                edgecolors="#111111",
+                linewidths=1.2 if is_hub else 1.0,
+                zorder=4,
+            )
+    for index, ax in enumerate(slice_axes):
+        ax.set_xlabel(r"$X$ ($\rho_p$)")
+        ax.grid(alpha=0.2)
+        ax.set_xlim(x_min - x_pad, x_max + x_pad)
+        ax.set_ylim(z_min - z_pad, z_max + z_pad)
+        if index == 0:
+            ax.set_ylabel(r"$Z$ ($\rho_p$)")
+        else:
+            ax.tick_params(axis="y", which="both", left=False, labelleft=False)
 
     if title:
         fig.suptitle(title)
