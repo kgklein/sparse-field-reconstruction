@@ -296,6 +296,7 @@ Additional HelioSwarm outputs:
 - `helioswarm_scaled.png`: spacecraft formation after scaling into the reconstruction box, or in simulation coordinates (`rho_p`) for simulation-backed HelioSwarm runs
 - `helioswarm_timeseries.csv`: moving-observatory time-series table with one row per `(step, spacecraft)`, including spacecraft positions in `rho_p` and sampled `Bx`, `By`, `Bz`
 - `helioswarm_timeseries_metadata.json`: metadata for the moving-observatory run, including transform details such as `rho_p_km`, `sim_box_rho_p`, initial transformed coordinates, velocity summaries, and output paths
+- `helioswarm_timeseries_geometry.png`: always-generated four-panel moving-observatory geometry figure with three hub-relative spacecraft projections and an `X-Z` simulation slice showing starting positions plus translated trajectories
 - `helioswarm_timeseries.png`: optional three-panel `Bx`/`By`/`Bz` line plot for all 9 spacecraft
 
 ## Repository Structure

@@ -265,3 +265,206 @@ def plot_hs_timeseries_components(
     if title:
         fig.suptitle(title)
     return fig, axes
+
+
+def _plot_hs_projected_positions(
+    ax,
+    coords: np.ndarray,
+    *,
+    spacecraft_labels: list[str],
+    spacecraft_colors: dict[str, str],
+    x_index: int,
+    y_index: int,
+    x_label: str,
+    y_label: str,
+    title: str,
+    axis_limit: float,
+):
+    coords = np.asarray(coords, dtype=float)
+    for label, point in zip(spacecraft_labels, coords):
+        is_hub = label == "H"
+        ax.scatter(
+            point[x_index],
+            point[y_index],
+            s=78 if is_hub else 64,
+            marker="o",
+            facecolors=spacecraft_colors[label],
+            edgecolors="#111111",
+            linewidths=1.2 if is_hub else 1.0,
+            zorder=3,
+        )
+
+    ax.axhline(0.0, color="#444444", linewidth=0.8, alpha=0.35, zorder=1)
+    ax.axvline(0.0, color="#444444", linewidth=0.8, alpha=0.35, zorder=1)
+    ax.set_xlim(-axis_limit, axis_limit)
+    ax.set_ylim(-axis_limit, axis_limit)
+    ax.set_xlabel(x_label)
+    ax.set_ylabel(y_label)
+    ax.set_title(title)
+    ax.grid(alpha=0.25)
+    ax.set_aspect("equal")
+
+
+def _segment_wrapped_path(coords: np.ndarray, *, box_spans: tuple[float, float]) -> tuple[np.ndarray, np.ndarray]:
+    coords = np.asarray(coords, dtype=float)
+    x_values = coords[:, 0].astype(float, copy=True)
+    z_values = coords[:, 2].astype(float, copy=True)
+
+    if len(coords) < 2:
+        return x_values, z_values
+
+    x_span, z_span = box_spans
+    jumps = np.zeros(len(coords), dtype=bool)
+    if x_span > 0.0:
+        jumps[1:] |= np.abs(np.diff(x_values)) > 0.5 * x_span
+    if z_span > 0.0:
+        jumps[1:] |= np.abs(np.diff(z_values)) > 0.5 * z_span
+
+    x_values[jumps] = np.nan
+    z_values[jumps] = np.nan
+    return x_values, z_values
+
+
+def plot_hs_timeseries_geometry(
+    field,
+    *,
+    spacecraft_labels: list[str],
+    spacecraft_colors: dict[str, str],
+    hub_relative_positions_km: np.ndarray,
+    initial_coords_rho_p: np.ndarray,
+    trajectory_coords_rho_p: np.ndarray,
+    title: str = "",
+):
+    hub_relative_positions_km = np.asarray(hub_relative_positions_km, dtype=float)
+    initial_coords_rho_p = np.asarray(initial_coords_rho_p, dtype=float)
+    trajectory_coords_rho_p = np.asarray(trajectory_coords_rho_p, dtype=float)
+
+    if hub_relative_positions_km.ndim != 2 or hub_relative_positions_km.shape[1] != 3:
+        raise ValueError(
+            "hub_relative_positions_km must be shaped (n_spacecraft, 3); "
+            f"got {hub_relative_positions_km.shape}"
+        )
+    if initial_coords_rho_p.ndim != 2 or initial_coords_rho_p.shape[1] != 3:
+        raise ValueError(
+            "initial_coords_rho_p must be shaped (n_spacecraft, 3); "
+            f"got {initial_coords_rho_p.shape}"
+        )
+    if trajectory_coords_rho_p.ndim != 3 or trajectory_coords_rho_p.shape[-1] != 3:
+        raise ValueError(
+            "trajectory_coords_rho_p must be shaped (n_steps, n_spacecraft, 3); "
+            f"got {trajectory_coords_rho_p.shape}"
+        )
+
+    if len(spacecraft_labels) != len(hub_relative_positions_km):
+        raise ValueError("spacecraft_labels length must match hub_relative_positions_km rows")
+    if initial_coords_rho_p.shape[0] != len(spacecraft_labels):
+        raise ValueError("spacecraft_labels length must match initial_coords_rho_p rows")
+    if trajectory_coords_rho_p.shape[1] != len(spacecraft_labels):
+        raise ValueError("spacecraft_labels length must match trajectory_coords_rho_p columns")
+
+    x = np.asarray(field.axes["x"], dtype=float)
+    z = np.asarray(field.axes["z"], dtype=float)
+    magnitude = np.linalg.norm(np.asarray(field.values, dtype=float), axis=-1)
+    y_index = field.grid_shape[1] // 2
+    xz_slice = magnitude[:, y_index, :].T
+    relative_extent = float(np.max(np.abs(hub_relative_positions_km)))
+    axis_limit = relative_extent * 1.05 if relative_extent > 0.0 else 1.0
+
+    fig = plt.figure(figsize=(12, 10), constrained_layout=True)
+    grid = fig.add_gridspec(2, 3, width_ratios=(1.0, 1.0, 0.05))
+    axes = np.empty((2, 2), dtype=object)
+    axes[0, 0] = fig.add_subplot(grid[0, 0])
+    axes[1, 0] = fig.add_subplot(grid[1, 0])
+    axes[0, 1] = fig.add_subplot(grid[0, 1])
+    axes[1, 1] = fig.add_subplot(grid[1, 1])
+    colorbar_ax = fig.add_subplot(grid[0, 2])
+
+    _plot_hs_projected_positions(
+        axes[0, 0],
+        hub_relative_positions_km,
+        spacecraft_labels=spacecraft_labels,
+        spacecraft_colors=spacecraft_colors,
+        x_index=0,
+        y_index=2,
+        x_label="Delta X (km)",
+        y_label="Delta Z (km)",
+        title="Hub-Relative X-Z",
+        axis_limit=axis_limit,
+    )
+    _plot_hs_projected_positions(
+        axes[1, 0],
+        hub_relative_positions_km,
+        spacecraft_labels=spacecraft_labels,
+        spacecraft_colors=spacecraft_colors,
+        x_index=0,
+        y_index=1,
+        x_label="Delta X (km)",
+        y_label="Delta Y (km)",
+        title="Hub-Relative X-Y",
+        axis_limit=axis_limit,
+    )
+    _plot_hs_projected_positions(
+        axes[1, 1],
+        hub_relative_positions_km,
+        spacecraft_labels=spacecraft_labels,
+        spacecraft_colors=spacecraft_colors,
+        x_index=1,
+        y_index=2,
+        x_label="Delta Y (km)",
+        y_label="Delta Z (km)",
+        title="Hub-Relative Y-Z",
+        axis_limit=axis_limit,
+    )
+
+    extent = [float(x[0]), float(x[-1]), float(z[0]), float(z[-1])]
+    box_spans = (extent[1] - extent[0], extent[3] - extent[2])
+    im = axes[0, 1].imshow(
+        xz_slice,
+        origin="lower",
+        cmap="viridis",
+        aspect="auto",
+        extent=extent,
+    )
+    fig.colorbar(im, cax=colorbar_ax, label="|B|")
+    trajectory_x = trajectory_coords_rho_p[:, :, 0]
+    trajectory_z = trajectory_coords_rho_p[:, :, 2]
+    x_min = min(extent[0], float(np.min(trajectory_x)))
+    x_max = max(extent[1], float(np.max(trajectory_x)))
+    z_min = min(extent[2], float(np.min(trajectory_z)))
+    z_max = max(extent[3], float(np.max(trajectory_z)))
+    x_pad = 0.03 * max(x_max - x_min, 1.0)
+    z_pad = 0.03 * max(z_max - z_min, 1.0)
+    for index, label in enumerate(spacecraft_labels):
+        coords = trajectory_coords_rho_p[:, index, :]
+        is_hub = label == "H"
+        x_path, z_path = _segment_wrapped_path(coords, box_spans=box_spans)
+        axes[0, 1].plot(
+            x_path,
+            z_path,
+            color=spacecraft_colors[label],
+            linewidth=1.8,
+            alpha=0.95,
+            zorder=3,
+        )
+        axes[0, 1].scatter(
+            initial_coords_rho_p[index, 0],
+            initial_coords_rho_p[index, 2],
+            s=80 if is_hub else 65,
+            marker="o",
+            facecolors=spacecraft_colors[label],
+            edgecolors="#111111",
+            linewidths=1.2 if is_hub else 1.0,
+            zorder=4,
+        )
+    axes[0, 1].set_xlabel("X (rho_p)")
+    axes[0, 1].set_ylabel("Z (rho_p)")
+    axes[0, 1].set_title("Simulation X-Z Slice")
+    axes[0, 1].grid(alpha=0.2)
+    axes[0, 1].set_xlim(x_min - x_pad, x_max + x_pad)
+    axes[0, 1].set_ylim(z_min - z_pad, z_max + z_pad)
+    axes[0, 1].set_aspect("equal")
+    axes[0, 1].set_anchor("C")
+
+    if title:
+        fig.suptitle(title)
+    return fig, axes

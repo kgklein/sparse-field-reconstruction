@@ -12,7 +12,10 @@ from sparse_recon.hs_timeseries import (
     stream_timeseries_to_csv,
     write_timeseries_metadata,
 )
-from sparse_recon.visualization import plot_hs_timeseries_components
+from sparse_recon.visualization import (
+    plot_hs_timeseries_components,
+    plot_hs_timeseries_geometry,
+)
 
 
 def _validate_positive(value, *, name: str) -> float:
@@ -71,13 +74,15 @@ def run_hs_timeseries(args) -> dict:
     )
     print("Loaded simulation field on a structured physical box", flush=True)
 
-    _, _, _, motion_metadata = generate_moving_spacecraft_trajectory(
+    _, trajectory_unwrapped_coords, trajectory_wrapped_coords, motion_metadata = (
+        generate_moving_spacecraft_trajectory(
         initial_coords_rho_p,
         velocity_km_s=(args.vx_kms, args.vy_kms, args.vz_kms),
         rho_p_km=rho_p_km,
         sim_box_rho_p=sim_box_rho_p,
         dt_seconds=dt_seconds,
         n_steps=n_steps,
+        )
     )
     print(
         f"Prepared motion metadata for {n_steps} timesteps; starting field sampling",
@@ -131,6 +136,7 @@ def run_hs_timeseries(args) -> dict:
         "output": {
             "csv_path": str(output_dir / "helioswarm_timeseries.csv"),
             "metadata_path": str(output_dir / "helioswarm_timeseries_metadata.json"),
+            "geometry_plot_path": str(output_dir / "helioswarm_timeseries_geometry.png"),
             "plot_path": (
                 str(output_dir / "helioswarm_timeseries.png")
                 if args.plot_timeseries
@@ -138,6 +144,23 @@ def run_hs_timeseries(args) -> dict:
             ),
         },
     }
+
+    print("Rendering HelioSwarm geometry plot", flush=True)
+    geometry_fig, _ = plot_hs_timeseries_geometry(
+        field,
+        spacecraft_labels=formation.spacecraft_labels,
+        spacecraft_colors=spacecraft_colors,
+        hub_relative_positions_km=formation.relative_positions_km,
+        initial_coords_rho_p=initial_coords_rho_p,
+        trajectory_coords_rho_p=trajectory_wrapped_coords,
+        title="HelioSwarm Geometry and Simulation Slice",
+    )
+    geometry_fig.savefig(output_dir / "helioswarm_timeseries_geometry.png", dpi=150)
+    print(
+        f"Saved HelioSwarm geometry plot to "
+        f"{output_dir / 'helioswarm_timeseries_geometry.png'}",
+        flush=True,
+    )
 
     write_timeseries_metadata(metadata, output_dir / "helioswarm_timeseries_metadata.json")
     print("Wrote CSV and metadata outputs", flush=True)
