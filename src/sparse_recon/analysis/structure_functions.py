@@ -193,6 +193,16 @@ def _derive_grid_spacing_metadata(input_metadata: dict | None) -> tuple[dict | N
     }, source
 
 
+def _resolve_lambda_min_floor(grid_spacing_rho_p: dict | None) -> float | None:
+    if not isinstance(grid_spacing_rho_p, dict):
+        return None
+
+    grid_spacing_min = grid_spacing_rho_p.get("min")
+    if grid_spacing_min is None or not np.isfinite(grid_spacing_min) or grid_spacing_min <= 0.0:
+        return None
+    return 0.5 * float(grid_spacing_min)
+
+
 def _build_unordered_pairs(array: np.ndarray) -> np.ndarray:
     n_samples = len(array)
     if n_samples < 2:
@@ -252,10 +262,13 @@ def _resolve_simulation_cube_lambda_range(
         raise ValueError(
             "Simulation cube metadata does not provide enough information to resolve lambda range"
         )
+    lambda_min_floor = _resolve_lambda_min_floor(grid_spacing_rho_p)
 
     resolved_lambda_min = float(
         grid_spacing_rho_p["min"] if lambda_min is None else lambda_min
     )
+    if lambda_min_floor is not None:
+        resolved_lambda_min = max(resolved_lambda_min, lambda_min_floor)
     resolved_lambda_max = float(
         grid_spacing_rho_p["box_perp_max"] if lambda_max is None else lambda_max
     )
@@ -667,6 +680,7 @@ def prepare_simulation_cube_structure_function_input(
     *,
     sim_box_rho_p: tuple[float, float, float],
     n_lambda_bins: int,
+    vector_variables: tuple[str, ...] | list[str] | None = None,
     lambda_min: float | None = None,
     lambda_max: float | None = None,
     candidate_pairs: int = 200000,
@@ -678,6 +692,7 @@ def prepare_simulation_cube_structure_function_input(
     field = load_structured_simulation_snapshot(
         simulation_path,
         sim_box_rho_p=sim_box_rho_p,
+        vector_variables=vector_variables,
     )
     coords, values = _flatten_structured_snapshot(field)
     resolved_lambda_min, resolved_lambda_max = _resolve_simulation_cube_lambda_range(
@@ -736,6 +751,7 @@ def prepare_simulation_cube_local_reference_input(
     simulation_path: str | Path,
     *,
     sim_box_rho_p: tuple[float, float, float],
+    vector_variables: tuple[str, ...] | list[str] | None = None,
     max_offset: int,
 ) -> StructureFunctionInput:
     """Build deterministic local-offset reference pairs for simulation-cube diagnostics."""
@@ -743,6 +759,7 @@ def prepare_simulation_cube_local_reference_input(
     field = load_structured_simulation_snapshot(
         simulation_path,
         sim_box_rho_p=sim_box_rho_p,
+        vector_variables=vector_variables,
     )
     coords, values = _flatten_structured_snapshot(field)
     pair_positions, pair_fields = _generate_local_reference_pairs(
@@ -903,6 +920,7 @@ def _resolve_lambda_edges(
     n_lambda_bins: int,
     lambda_min: float | None,
     lambda_max: float | None,
+    grid_spacing_rho_p: dict | None = None,
 ) -> np.ndarray:
     if n_lambda_bins <= 0:
         raise ValueError(f"n_lambda_bins must be positive; got {n_lambda_bins}")
@@ -912,6 +930,9 @@ def _resolve_lambda_edges(
         raise ValueError("No positive finite lambda values are available for logarithmic binning")
 
     resolved_lambda_min = float(valid_lambda.min() if lambda_min is None else lambda_min)
+    lambda_min_floor = _resolve_lambda_min_floor(grid_spacing_rho_p)
+    if lambda_min_floor is not None:
+        resolved_lambda_min = max(resolved_lambda_min, lambda_min_floor)
     resolved_lambda_max = float(valid_lambda.max() if lambda_max is None else lambda_max)
 
     if resolved_lambda_min <= 0.0 or resolved_lambda_max <= 0.0:
@@ -997,11 +1018,13 @@ def compute_structure_functions(
     valid_local_b_mask = np.isfinite(local_b_magnitude) & (local_b_magnitude > 0.0)
     valid_lambda_mask = np.isfinite(lambda_values) & (lambda_values > 0.0)
     valid_lambda_values = lambda_values[base_valid_mask]
+    grid_spacing_rho_p, grid_spacing_source = _derive_grid_spacing_metadata(input_metadata)
     lambda_bin_edges = _resolve_lambda_edges(
         valid_lambda_values,
         n_lambda_bins=n_lambda_bins,
         lambda_min=lambda_min,
         lambda_max=lambda_max,
+        grid_spacing_rho_p=grid_spacing_rho_p,
     )
     lambda_bin_centers = np.sqrt(lambda_bin_edges[:-1] * lambda_bin_edges[1:])
 
@@ -1024,11 +1047,25 @@ def compute_structure_functions(
         populated_mask = counts > 0
         structure_functions[order_index, populated_mask] = sums[populated_mask] / counts[populated_mask]
 
+    kurtosis = None
+    if max_order >= 4:
+        kurtosis = np.full(n_lambda_bins, np.nan, dtype=float)
+        second_order = structure_functions[1]
+        fourth_order = structure_functions[3]
+        valid_kurtosis_mask = (
+            (counts > 0)
+            & np.isfinite(second_order)
+            & np.isfinite(fourth_order)
+            & (second_order != 0.0)
+        )
+        kurtosis[valid_kurtosis_mask] = (
+            fourth_order[valid_kurtosis_mask] / (second_order[valid_kurtosis_mask] ** 2)
+        )
+
     undersampled_bin_mask, counts_max, undersampled_threshold = _classify_undersampled_bins(
         counts,
         fraction=undersampled_fraction,
     )
-    grid_spacing_rho_p, grid_spacing_source = _derive_grid_spacing_metadata(input_metadata)
     diagnostics_metadata = (
         dict(input_metadata.get("diagnostics", {}))
         if isinstance(input_metadata, dict) and "diagnostics" in input_metadata
@@ -1079,7 +1116,7 @@ def compute_structure_functions(
         },
         "extensions": {
             "fitted_exponents": None,
-            "kurtosis": None,
+            "kurtosis": None if kurtosis is None else kurtosis.tolist(),
         },
         "diagnostics": diagnostics_metadata,
         "warnings": warning_records,
@@ -1093,7 +1130,7 @@ def compute_structure_functions(
         orders=orders,
         metadata=metadata,
         fitted_exponents=None,
-        kurtosis=None,
+        kurtosis=kurtosis,
     )
 
 
@@ -1105,8 +1142,6 @@ def plot_structure_functions(
     undersampled_fraction: float | None = None,
 ):
     """Render a minimal log-log plot of the populated structure-function bins."""
-
-    fig, ax = plt.subplots(figsize=(8, 6), constrained_layout=True)
     analysis_metadata = result.metadata.get("analysis", {})
     lambda_units = analysis_metadata.get("lambda_units", "rho_p")
     if undersampled_fraction is None:
@@ -1115,23 +1150,20 @@ def plot_structure_functions(
         result.counts,
         fraction=float(undersampled_fraction),
     )
-    for order_index, order in enumerate(result.orders):
-        values = result.structure_functions[order_index]
-        valid_mask = np.isfinite(values) & (result.counts > 0)
-        if mask_undersampled:
-            valid_mask &= ~undersampled_bin_mask
-        if not np.any(valid_mask):
-            continue
-        ax.plot(
-            result.lambda_bin_centers[valid_mask],
-            values[valid_mask],
-            marker="o",
-            linewidth=1.8,
-            label=fr"$S_{int(order)}$",
-        )
+    has_kurtosis = result.kurtosis is not None
+    if has_kurtosis:
+        fig, axes = plt.subplots(1, 2, figsize=(13, 6), constrained_layout=True)
+        structure_ax, kurtosis_ax = axes
+    else:
+        fig, structure_ax = plt.subplots(1, 1, figsize=(8, 6), constrained_layout=True)
+        axes = structure_ax
+        kurtosis_ax = None
 
-    grid_spacing_rho_p = analysis_metadata.get("grid_spacing_rho_p")
-    if isinstance(grid_spacing_rho_p, dict):
+    def _add_reference_lines(ax) -> None:
+        grid_spacing_rho_p = analysis_metadata.get("grid_spacing_rho_p")
+        if not isinstance(grid_spacing_rho_p, dict):
+            return
+
         grid_spacing_min = grid_spacing_rho_p.get("min")
         if grid_spacing_min is not None and np.isfinite(grid_spacing_min) and grid_spacing_min > 0.0:
             ax.axvline(
@@ -1151,15 +1183,56 @@ def plot_structure_functions(
                 label=f"perp box size (max Lxy = {float(box_perp_max):.3g} {lambda_units})",
             )
 
-    ax.set_xscale("log")
-    ax.set_yscale("log")
-    ax.set_xlabel(fr"$\lambda$ ({lambda_units})")
-    ax.set_ylabel(r"$S_n(\lambda)$")
-    ax.grid(alpha=0.3, which="both")
+    for order_index, order in enumerate(result.orders):
+        values = result.structure_functions[order_index]
+        valid_mask = np.isfinite(values) & (result.counts > 0)
+        if mask_undersampled:
+            valid_mask &= ~undersampled_bin_mask
+        if not np.any(valid_mask):
+            continue
+        structure_ax.plot(
+            result.lambda_bin_centers[valid_mask],
+            values[valid_mask],
+            marker="o",
+            linewidth=1.8,
+            label=fr"$S_{int(order)}$",
+        )
+
+    _add_reference_lines(structure_ax)
+    structure_ax.set_xscale("log")
+    structure_ax.set_yscale("log")
+    structure_ax.set_xlabel(fr"$\lambda$ ({lambda_units})")
+    structure_ax.set_ylabel(r"$S_n(\lambda)$")
+    structure_ax.grid(alpha=0.3, which="both")
+    structure_ax.legend(loc="best")
+
+    if kurtosis_ax is not None:
+        kurtosis_values = np.asarray(result.kurtosis, dtype=float)
+        valid_mask = np.isfinite(kurtosis_values) & (result.counts > 0)
+        if mask_undersampled:
+            valid_mask &= ~undersampled_bin_mask
+        if np.any(valid_mask):
+            kurtosis_ax.plot(
+                result.lambda_bin_centers[valid_mask],
+                kurtosis_values[valid_mask],
+                marker="o",
+                linewidth=1.8,
+                color="#0072B2",
+                label=r"$S_4(\lambda) / S_2(\lambda)^2$",
+            )
+        _add_reference_lines(kurtosis_ax)
+        kurtosis_ax.set_xscale("log")
+        kurtosis_ax.set_xlabel(fr"$\lambda$ ({lambda_units})")
+        kurtosis_ax.set_ylabel(r"$S_4(\lambda) / S_2(\lambda)^2$")
+        kurtosis_ax.grid(alpha=0.3, which="both")
+        kurtosis_ax.legend(loc="best")
+
     if title:
-        ax.set_title(title)
-    ax.legend(loc="best")
-    return fig, ax
+        if has_kurtosis:
+            fig.suptitle(title)
+        else:
+            structure_ax.set_title(title)
+    return fig, axes
 
 
 def plot_cube_sampling_diagnostics(

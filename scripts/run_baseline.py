@@ -58,7 +58,24 @@ def load_field(args):
     if args.data_source == "simulation":
         if not args.simulation_path:
             raise ValueError("Simulation mode requires --simulation-path")
-        return SimulationSnapshotDataset(args.simulation_path).load()
+        sim_box_rho_p = None
+        if (
+            args.sim_box_x is not None
+            and args.sim_box_y is not None
+            and args.sim_box_z is not None
+        ):
+            sim_box_rho_p = _get_simulation_box_args(args)
+        loader_kwargs = {
+            "sim_box_rho_p": sim_box_rho_p,
+            "vector_variables": _parse_csv(args.simulation_vector_vars),
+        }
+        if args.simulation_scalar_var is not None:
+            loader_kwargs["scalar_variable"] = args.simulation_scalar_var
+            loader_kwargs["vector_variables"] = None
+        return SimulationSnapshotDataset(
+            args.simulation_path,
+            loader_kwargs=loader_kwargs,
+        ).load()
     raise ValueError(f"Unknown data source '{args.data_source}'")
 
 
@@ -267,6 +284,16 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--field-seed", type=int, default=0)
     parser.add_argument("--field-noise-sigma", type=float, default=0.05)
     parser.add_argument("--simulation-path", default=None)
+    parser.add_argument(
+        "--simulation-vector-vars",
+        default="bx,by,bz",
+        help="Comma-separated vector component names to read from .bp snapshots.",
+    )
+    parser.add_argument(
+        "--simulation-scalar-var",
+        default=None,
+        help="Single scalar variable name to read from a .bp snapshot instead of a vector field.",
+    )
     parser.add_argument("--methods", default="rbf,linear,nearest")
     parser.add_argument("--sample-counts", default="50")
     parser.add_argument("--geometries", default="random,clustered,multi_probe_like")

@@ -21,6 +21,16 @@ def _validate_positive(value, *, name: str) -> float:
     return float(value)
 
 
+def _validate_nonnegative(value, *, name: str) -> float:
+    if value is None or value < 0:
+        raise ValueError(f"{name} must be provided as a non-negative value")
+    return float(value)
+
+
+def _parse_csv(value: str) -> list[str]:
+    return [item.strip() for item in value.split(",") if item.strip()]
+
+
 def _get_simulation_box_args(args) -> tuple[float, float, float]:
     return (
         _validate_positive(args.sim_box_x, name="--sim-box-x"),
@@ -48,6 +58,7 @@ def run_structure_function_analysis(args) -> dict:
             args.simulation_path,
             sim_box_rho_p=_get_simulation_box_args(args),
             n_lambda_bins=args.n_lambda_bins,
+            vector_variables=_parse_csv(args.simulation_vector_vars),
             lambda_min=args.lambda_min,
             lambda_max=args.lambda_max,
             candidate_pairs=args.cube_candidate_pairs,
@@ -80,6 +91,10 @@ def run_structure_function_analysis(args) -> dict:
         lambda_max=resolved_lambda_max,
         input_metadata=prepared_input.metadata,
         n_steps=prepared_input.n_steps,
+        undersampled_fraction=_validate_nonnegative(
+            args.undersampled_fraction,
+            name="--undersampled-fraction",
+        ),
     )
 
     reference_result = None
@@ -87,6 +102,7 @@ def run_structure_function_analysis(args) -> dict:
         reference_input = prepare_simulation_cube_local_reference_input(
             args.simulation_path,
             sim_box_rho_p=_get_simulation_box_args(args),
+            vector_variables=_parse_csv(args.simulation_vector_vars),
             max_offset=args.cube_reference_max_offset,
         )
         reference_result = compute_structure_functions(
@@ -100,6 +116,10 @@ def run_structure_function_analysis(args) -> dict:
             lambda_max=resolved_lambda_max,
             input_metadata=reference_input.metadata,
             n_steps=reference_input.n_steps,
+            undersampled_fraction=_validate_nonnegative(
+                args.undersampled_fraction,
+                name="--undersampled-fraction",
+            ),
         )
         comparison_metadata, comparison_warnings = _compare_small_lambda_results(
             result,
@@ -148,6 +168,11 @@ def run_structure_function_analysis(args) -> dict:
         fig, _ = plot_structure_functions(
             result,
             title=f"Structure Functions ({args.input_mode})",
+            mask_undersampled=not args.plot_include_undersampled,
+            undersampled_fraction=_validate_nonnegative(
+                args.undersampled_fraction,
+                name="--undersampled-fraction",
+            ),
         )
         fig.savefig(output_dir / "structure_functions.png", dpi=150)
         print(f"Saved structure-function plot to {output_dir / 'structure_functions.png'}", flush=True)
@@ -186,6 +211,11 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--timeseries-csv", default=None)
     parser.add_argument("--timeseries-metadata", default=None)
     parser.add_argument("--simulation-path", default=None)
+    parser.add_argument(
+        "--simulation-vector-vars",
+        default="bx,by,bz",
+        help="Comma-separated vector component names to read from .bp snapshots.",
+    )
     parser.add_argument("--sim-box-x", type=float, default=None)
     parser.add_argument("--sim-box-y", type=float, default=None)
     parser.add_argument("--sim-box-z", type=float, default=None)
@@ -201,6 +231,17 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--cube-compare-local-reference", action="store_true")
     parser.add_argument("--cube-reference-max-offset", type=int, default=1)
     parser.add_argument("--plot", action="store_true")
+    parser.add_argument(
+        "--undersampled-fraction",
+        type=float,
+        default=0.05,
+        help="Relative count threshold for marking bins as undersampled; default is 0.05.",
+    )
+    parser.add_argument(
+        "--plot-include-undersampled",
+        action="store_true",
+        help="Include bins below the undersampled-count threshold in the standard structure-function plot.",
+    )
     parser.add_argument("--output-dir", required=True)
     return parser
 

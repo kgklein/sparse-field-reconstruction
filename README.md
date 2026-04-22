@@ -24,6 +24,18 @@ The main user entrypoint is [`scripts/run_baseline.py`](/home/kgklein/Codes/spar
 
 ## Setup
 
+For a simple local install in this workspace, you can use:
+
+```bash
+cd /home/kgklein/Codes/sparse-field-reconstruction
+python3 -m venv .venv
+source .venv/bin/activate
+python -m pip install --upgrade pip
+python -m pip install -e .
+```
+
+For full development and notebook extras, use:
+
 ```bash
 git clone https://github.com/kgklein/sparse-field-reconstruction.git
 cd sparse-field-reconstruction
@@ -50,6 +62,7 @@ The repo includes small worked examples as shell scripts:
 - [`quick_run_3d_sim_hs.sh`](/home/kgklein/Codes/sparse-field-reconstruction/quick_run_3d_sim_hs.sh): local example of a 3D simulation snapshot with HelioSwarm sampling; update the data paths for your machine before running it
 - [`quick_run_hs_timeseries.sh`](/home/kgklein/Codes/sparse-field-reconstruction/quick_run_hs_timeseries.sh): local example of a moving-observatory HelioSwarm time-series run through a static simulation snapshot
 - [`quick_run_structure_functions.sh`](/home/kgklein/Codes/sparse-field-reconstruction/quick_run_structure_functions.sh): local example of structure-function analysis on an existing moving-observatory time-series product
+- [`quick_run_space_time_correlation.sh`](/home/kgklein/Codes/sparse-field-reconstruction/quick_run_space_time_correlation.sh): local example of multipoint space-time decorrelation analysis on an existing moving-observatory time-series product
 
 You can run them directly, for example:
 
@@ -60,6 +73,7 @@ You can run them directly, for example:
 ./quick_run_3d_sim_hs.sh
 ./quick_run_hs_timeseries.sh
 ./quick_run_structure_functions.sh
+./quick_run_space_time_correlation.sh
 ```
 
 You can also run the main script directly.
@@ -162,6 +176,19 @@ PYTHONPATH=src MPLCONFIGDIR=/tmp/mpl python3 scripts/run_structure_functions.py 
   --n-lambda-bins 20 \
   --plot \
   --output-dir /tmp/sparse_recon_structure_functions
+```
+
+Space-time decorrelation analysis from an existing moving-observatory time-series product:
+
+```bash
+PYTHONPATH=src MPLCONFIGDIR=/tmp/mpl python3 scripts/run_space_time_correlation.py \
+  --timeseries-csv /tmp/sparse_recon_hs_timeseries/helioswarm_timeseries.csv \
+  --timeseries-metadata /tmp/sparse_recon_hs_timeseries/helioswarm_timeseries_metadata.json \
+  --spacecraft-labels H,N1,N2,N3,N4,N5,N6,N7,N8 \
+  --n-r-bins 24 \
+  --plot \
+  --plot-contour \
+  --output-dir /tmp/sparse_recon_space_time_correlation
 ```
 
 Structure-function analysis directly from a simulation cube:

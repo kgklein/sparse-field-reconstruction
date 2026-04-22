@@ -238,14 +238,28 @@ def plot_hs_timeseries_components(
     bx: np.ndarray,
     by: np.ndarray,
     bz: np.ndarray,
+    component_labels: tuple[str, str, str] = (r"$B_x$", r"$B_y$", r"$B_z$"),
+    density: np.ndarray | None = None,
+    density_label: str = r"$n$",
     title: str = "",
 ):
     component_specs = [
-        (bx, "Bx"),
-        (by, "By"),
-        (bz, "Bz"),
+        (bx, component_labels[0]),
+        (by, component_labels[1]),
+        (bz, component_labels[2]),
     ]
-    fig, axes = plt.subplots(3, 1, figsize=(12, 9), sharex=True, constrained_layout=True)
+    if density is not None:
+        component_specs.append((density, density_label))
+
+    n_panels = len(component_specs)
+    fig, axes = plt.subplots(
+        n_panels,
+        1,
+        figsize=(12, 3 * n_panels),
+        sharex=True,
+        constrained_layout=True,
+    )
+    axes = np.atleast_1d(axes)
 
     times = np.asarray(times, dtype=float)
     for ax, (values_by_spacecraft, label) in zip(axes, component_specs):
@@ -261,7 +275,7 @@ def plot_hs_timeseries_components(
         ax.set_ylabel(label)
         ax.grid(alpha=0.3)
 
-    axes[-1].set_xlabel("time_seconds")
+    axes[-1].set_xlabel("Time (seconds)")
     axes[0].legend(loc="upper right", ncol=3, fontsize=9)
     if title:
         fig.suptitle(title)

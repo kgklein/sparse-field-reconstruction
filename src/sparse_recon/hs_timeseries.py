@@ -7,6 +7,8 @@ from pathlib import Path
 
 import numpy as np
 
+from sparse_recon.datasets.structured_snapshot import load_structured_snapshot_data
+
 
 HS_COLORS = [
     "#56B4E9",
@@ -54,56 +56,23 @@ def load_structured_simulation_snapshot(
     path: str | Path,
     *,
     sim_box_rho_p: tuple[float, float, float],
+    vector_variables: tuple[str, ...] | list[str] | None = None,
+    scalar_variable: str | None = None,
+    packed_schema: str | None = None,
+    background_b_lua_path: str | Path | None = None,
 ) -> StructuredFieldSnapshot:
-    path = Path(path)
-    if not path.exists():
-        raise FileNotFoundError(
-            f"Dataset not found: {path}\n"
-            "Place the file locally or provide a valid simulation snapshot path."
-        )
-    if path.suffix.lower() != ".npy":
-        raise ValueError(
-            f"Unsupported simulation snapshot format: {path.suffix}. Expected .npy"
-        )
-
-    field = np.load(path, allow_pickle=False)
-    if field.ndim != 4:
-        raise ValueError(
-            "Simulation snapshot must be a 4D array shaped (nx, ny, nz, 3); "
-            f"got shape {field.shape}"
-        )
-    if field.shape[-1] != 3:
-        raise ValueError(
-            "Simulation snapshot last dimension must have size 3 for vector components; "
-            f"got shape {field.shape}"
-        )
-
-    sim_box = np.asarray(sim_box_rho_p, dtype=float)
-    if sim_box.shape != (3,) or np.any(sim_box <= 0):
-        raise ValueError(
-            "sim_box_rho_p must contain three positive axis lengths; "
-            f"got {sim_box_rho_p}"
-        )
-
-    nx, ny, nz, _ = field.shape
-    axes = {
-        "x": np.linspace(0.0, sim_box[0], nx),
-        "y": np.linspace(0.0, sim_box[1], ny),
-        "z": np.linspace(0.0, sim_box[2], nz),
-    }
-    metadata = {
-        "source": "simulation",
-        "field_kind": "simulation_snapshot",
-        "file_path": str(path),
-        "array_shape": list(field.shape),
-        "dtype": str(field.dtype),
-        "grid_convention": "uniform_box_rho_p",
-        "sim_box_rho_p": sim_box.tolist(),
-    }
+    field, axes, grid_shape, metadata = load_structured_snapshot_data(
+        path,
+        sim_box_rho_p=sim_box_rho_p,
+        vector_variables=vector_variables,
+        scalar_variable=scalar_variable,
+        packed_schema=packed_schema,
+        background_b_lua_path=background_b_lua_path,
+    )
     return StructuredFieldSnapshot(
         values=field,
         axes=axes,
-        grid_shape=(nx, ny, nz),
+        grid_shape=grid_shape,
         metadata=metadata,
     )
 
@@ -261,6 +230,7 @@ def iter_time_series_records(
     dt_seconds: float,
     n_steps: int,
     field: StructuredFieldSnapshot,
+    normalization_field: StructuredFieldSnapshot | None = None,
     spacecraft_labels: list[str],
     sampling_method: str = "nearest",
     progress_callback=None,
@@ -284,6 +254,19 @@ def iter_time_series_records(
             wrapped_coords,
             method=sampling_method,
         )
+        if normalization_field is not None:
+            _, normalization_values = sample_structured_field(
+                normalization_field,
+                wrapped_coords,
+                method=sampling_method,
+            )
+            density = normalization_values[:, 0]
+            if np.any(~np.isfinite(density)) or np.any(density == 0.0):
+                raise ValueError(
+                    "Normalization field produced non-finite or zero density values during "
+                    "time-series sampling"
+                )
+            sampled_values = sampled_values / density[:, None]
         rows = []
         for label, coord, value in zip(spacecraft_labels, sampled_coords, sampled_values):
             rows.append(
@@ -306,6 +289,9 @@ def iter_time_series_records(
             "wrapped_coords": wrapped_coords,
             "rows": rows,
             "values": sampled_values,
+            "normalization_values": (
+                None if normalization_field is None else normalization_values[:, 0].copy()
+            ),
         }
 
 
@@ -319,6 +305,7 @@ def stream_timeseries_to_csv(
     dt_seconds: float,
     n_steps: int,
     field: StructuredFieldSnapshot,
+    normalization_field: StructuredFieldSnapshot | None = None,
     spacecraft_labels: list[str],
     sampling_method: str = "nearest",
     progress_callback=None,
@@ -329,6 +316,11 @@ def stream_timeseries_to_csv(
     bx = np.empty((n_spacecraft, n_steps), dtype=float)
     by = np.empty((n_spacecraft, n_steps), dtype=float)
     bz = np.empty((n_spacecraft, n_steps), dtype=float)
+    density = (
+        None
+        if normalization_field is None
+        else np.empty((n_spacecraft, n_steps), dtype=float)
+    )
 
     final_unwrapped_coords = None
     final_wrapped_coords = None
@@ -346,6 +338,7 @@ def stream_timeseries_to_csv(
             dt_seconds=dt_seconds,
             n_steps=n_steps,
             field=field,
+            normalization_field=normalization_field,
             spacecraft_labels=spacecraft_labels,
             sampling_method=sampling_method,
             progress_callback=progress_callback,
@@ -357,6 +350,8 @@ def stream_timeseries_to_csv(
             bx[:, step] = chunk["values"][:, 0]
             by[:, step] = chunk["values"][:, 1]
             bz[:, step] = chunk["values"][:, 2]
+            if density is not None:
+                density[:, step] = chunk["normalization_values"]
             final_unwrapped_coords = chunk["unwrapped_coords"]
             final_wrapped_coords = chunk["wrapped_coords"]
 
@@ -366,6 +361,7 @@ def stream_timeseries_to_csv(
         "bx": bx,
         "by": by,
         "bz": bz,
+        "density": density,
         "final_unwrapped_coords": (
             final_unwrapped_coords.tolist() if final_unwrapped_coords is not None else None
         ),
@@ -380,6 +376,7 @@ def sample_timeseries_from_trajectory(
     *,
     time_seconds: np.ndarray,
     wrapped_coords: np.ndarray,
+    normalization_field: StructuredFieldSnapshot | None = None,
     spacecraft_labels: list[str],
     sampling_method: str = "nearest",
     progress_callback=None,
@@ -397,6 +394,16 @@ def sample_timeseries_from_trajectory(
     if wrapped_coords.shape[1] != len(spacecraft_labels):
         raise ValueError("spacecraft_labels length must match wrapped_coords second dimension")
 
+    n_spacecraft = len(spacecraft_labels)
+    times = np.empty(len(time_seconds), dtype=float)
+    bx = np.empty((n_spacecraft, len(time_seconds)), dtype=float)
+    by = np.empty((n_spacecraft, len(time_seconds)), dtype=float)
+    bz = np.empty((n_spacecraft, len(time_seconds)), dtype=float)
+    density_out = (
+        None
+        if normalization_field is None
+        else np.empty((n_spacecraft, len(time_seconds)), dtype=float)
+    )
     records: list[dict] = []
     for step, (time_value, coords_step) in enumerate(zip(time_seconds, wrapped_coords)):
         if progress_callback is not None:
@@ -410,6 +417,24 @@ def sample_timeseries_from_trajectory(
             coords_step,
             method=sampling_method,
         )
+        if normalization_field is not None:
+            _, normalization_values = sample_structured_field(
+                normalization_field,
+                coords_step,
+                method=sampling_method,
+            )
+            density = normalization_values[:, 0]
+            if np.any(~np.isfinite(density)) or np.any(density == 0.0):
+                raise ValueError(
+                    "Normalization field produced non-finite or zero density values during "
+                    "time-series sampling"
+                )
+            sampled_values = sampled_values / density[:, None]
+            density_out[:, step] = density
+        times[step] = float(time_value)
+        bx[:, step] = sampled_values[:, 0]
+        by[:, step] = sampled_values[:, 1]
+        bz[:, step] = sampled_values[:, 2]
         for label, coord, value in zip(spacecraft_labels, sampled_coords, sampled_values):
             records.append(
                 {
@@ -424,7 +449,15 @@ def sample_timeseries_from_trajectory(
                     "bz": float(value[2]),
                 }
             )
-    return records
+    return {
+        "record_count": len(records),
+        "records": records,
+        "times": times,
+        "bx": bx,
+        "by": by,
+        "bz": bz,
+        "density": density_out,
+    }
 
 
 def write_timeseries_metadata(metadata: dict, output_path: str | Path) -> None:

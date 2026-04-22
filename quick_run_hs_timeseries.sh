@@ -7,10 +7,10 @@ PYTHONPATH=src MPLCONFIGDIR=/tmp/mpl python3 scripts/run_hs_timeseries.py \
   --sim-box-y 314.15926 \
   --sim-box-z 1570.79632\
   --vx-kms 250 \
-  --vy-kms 50 \
+  --vy-kms 120 \
   --vz-kms 150 \
   --dt-seconds 0.03125 \
-  --n-steps 7680 \
+  --n-steps 10000 \
   --sampling-method trilinear \
   --plot-timeseries \
-  --output-dir /tmp/sparse_recon_hs_timeseries
+  --output-dir figs

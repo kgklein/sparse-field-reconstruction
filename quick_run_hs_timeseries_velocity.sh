@@ -1,0 +1,24 @@
+PYTHONPATH=src MPLCONFIGDIR=/tmp/mpl python3 scripts/run_hs_timeseries.py \
+  --simulation-path /home/kgklein/Codes/gkeyll/data/ot3D_field_75.bp \
+  --ion-moments-path /home/kgklein/Codes/gkeyll/data/ot3D_ion_75.bp \
+  --background-b-lua-path /home/kgklein/Codes/gkeyll/data/ot3D.lua \
+  --simulation-vector-vars nux,nuy,nuz \
+  --simulation-density-var n \
+  --geometry-vector-vars bx,by,bz \
+  --secondary-timeseries-vector-vars bx,by,bz \
+  --secondary-timeseries-component-labels "B_x,B_y,B_z" \
+  --simulation-component-labels "u_x,u_y,u_z" \
+  --hs-path /home/kgklein/Codes/HelioSwarm/DRM \
+  --hs-time "2029-09-26 00:00:00" \
+  --rho-p-km 100 \
+  --sim-box-x 314.15926 \
+  --sim-box-y 314.15926 \
+  --sim-box-z 1570.79632 \
+  --vx-kms 250 \
+  --vy-kms 120 \
+  --vz-kms 150 \
+  --dt-seconds 0.03125 \
+  --n-steps 10000 \
+  --sampling-method trilinear \
+  --plot-timeseries \
+  --output-dir figs_velocity
