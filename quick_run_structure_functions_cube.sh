@@ -1,0 +1,16 @@
+PYTHONPATH=src MPLCONFIGDIR=/tmp/mpl python3 scripts/run_structure_functions.py \
+  --input-mode simulation_cube \
+  --simulation-path /home/kgklein/Codes/gkeyll/data/ot3D_field_75.npy \
+  --sim-box-x 314.15926 \
+  --sim-box-y 314.15926 \
+  --sim-box-z 1570.79632 \
+  --max-order 6 \
+  --n-lambda-bins 20 \
+  --cube-candidate-pairs 20000 \
+  --cube-target-pairs-per-bin 256 \
+  --cube-random-seed 0 \
+  --cube-diagnostics \
+  --cube-compare-local-reference \
+  --cube-reference-max-offset 1 \
+  --plot \
+  --output-dir /tmp/sparse_recon_structure_functions_cube
