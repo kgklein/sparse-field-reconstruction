@@ -49,6 +49,7 @@ The repo includes small worked examples as shell scripts:
 - [`quick_run_3d_hs.sh`](/home/kgklein/Codes/sparse-field-reconstruction/quick_run_3d_hs.sh): 3D synthetic field with HelioSwarm sampling
 - [`quick_run_3d_sim_hs.sh`](/home/kgklein/Codes/sparse-field-reconstruction/quick_run_3d_sim_hs.sh): local example of a 3D simulation snapshot with HelioSwarm sampling; update the data paths for your machine before running it
 - [`quick_run_hs_timeseries.sh`](/home/kgklein/Codes/sparse-field-reconstruction/quick_run_hs_timeseries.sh): local example of a moving-observatory HelioSwarm time-series run through a static simulation snapshot
+- [`quick_run_structure_functions.sh`](/home/kgklein/Codes/sparse-field-reconstruction/quick_run_structure_functions.sh): local example of structure-function analysis on an existing moving-observatory time-series product
 
 You can run them directly, for example:
 
@@ -58,6 +59,7 @@ You can run them directly, for example:
 ./quick_run_3d_hs.sh
 ./quick_run_3d_sim_hs.sh
 ./quick_run_hs_timeseries.sh
+./quick_run_structure_functions.sh
 ```
 
 You can also run the main script directly.
@@ -148,6 +150,39 @@ This time-series mode samples the simulation field directly along a moving 9-spa
 HelioSwarm formation. It does not reconstruct the field over the full domain. Instead, it
 generates spacecraft trajectories through the simulation box, applies periodic wrapping at the
 box boundaries, and writes sampled `Bx`, `By`, and `Bz` values for each spacecraft and timestep.
+
+Structure-function analysis from an existing moving-observatory time-series product:
+
+```bash
+PYTHONPATH=src MPLCONFIGDIR=/tmp/mpl python3 scripts/run_structure_functions.py \
+  --input-mode interpolated_timeseries \
+  --timeseries-csv /tmp/sparse_recon_hs_timeseries/helioswarm_timeseries.csv \
+  --timeseries-metadata /tmp/sparse_recon_hs_timeseries/helioswarm_timeseries_metadata.json \
+  --max-order 4 \
+  --n-lambda-bins 20 \
+  --plot \
+  --output-dir /tmp/sparse_recon_structure_functions
+```
+
+Structure-function analysis directly from a simulation cube:
+
+```bash
+PYTHONPATH=src MPLCONFIGDIR=/tmp/mpl python3 scripts/run_structure_functions.py \
+  --input-mode simulation_cube \
+  --simulation-path /path/to/ot3D_field_75.npy \
+  --sim-box-x 20 \
+  --sim-box-y 20 \
+  --sim-box-z 20 \
+  --max-order 4 \
+  --n-lambda-bins 20 \
+  --cube-candidate-pairs 200000 \
+  --cube-target-pairs-per-bin 256 \
+  --cube-diagnostics \
+  --cube-compare-local-reference \
+  --cube-reference-max-offset 1 \
+  --plot \
+  --output-dir /tmp/sparse_recon_structure_functions_cube
+```
 
 ## Data Sources
 
@@ -252,6 +287,12 @@ The moving-observatory time-series driver is:
 python3 scripts/run_hs_timeseries.py ...
 ```
 
+The structure-function driver is:
+
+```bash
+python3 scripts/run_structure_functions.py ...
+```
+
 Important arguments:
 
 - `--data-source`: choose `synthetic` or `simulation`
@@ -266,6 +307,20 @@ Important arguments:
 - `--n-steps`: number of time samples for moving-observatory time-series runs
 - `--sampling-method`: moving-observatory sampling method, `nearest` or `trilinear`
 - `--plot-timeseries`: save the optional three-panel `Bx`/`By`/`Bz` line plot for moving-observatory runs
+- `--timeseries-csv`: path to an existing moving-observatory CSV product for structure-function analysis
+- `--timeseries-metadata`: optional metadata JSON for a moving-observatory CSV product
+- `--input-mode`: choose `interpolated_timeseries` or `simulation_cube` for structure-function analysis
+- `--field-component`: structure-function field component, currently `bx`
+- `--max-order`: highest structure-function order to compute
+- `--n-lambda-bins`: number of logarithmic bins in `lambda`
+- `--lambda-min`, `--lambda-max`: optional explicit lambda bin range for structure-function analysis
+- `--cube-candidate-pairs`: number of random simulation-cube candidate pairs drawn from the full structured grid
+- `--cube-target-pairs-per-bin`: maximum accepted simulation-cube pairs per log-`lambda` bin
+- `--cube-random-seed`: RNG seed for reproducible simulation-cube pair sampling
+- `--cube-diagnostics`: save simulation-cube diagnostic metadata and a diagnostic figure
+- `--cube-compare-local-reference`: compare the production simulation-cube sampler against a local-offset reference
+- `--cube-reference-max-offset`: maximum grid-index offset used by the local reference comparison
+- `--plot`: save the optional structure-function plot
 - `--include-hub`: include the hub spacecraft in HelioSwarm-driven sampling
 - `--output-dir`: directory for metrics and plots
 
@@ -298,6 +353,8 @@ Additional HelioSwarm outputs:
 - `helioswarm_timeseries_metadata.json`: metadata for the moving-observatory run, including transform details such as `rho_p_km`, `sim_box_rho_p`, initial transformed coordinates, velocity summaries, and output paths
 - `helioswarm_timeseries_geometry.png`: always-generated four-panel moving-observatory geometry figure with three hub-relative spacecraft projections and an `X-Z` simulation slice showing starting positions plus translated trajectories
 - `helioswarm_timeseries.png`: optional three-panel `Bx`/`By`/`Bz` line plot for all 9 spacecraft
+- `structure_functions.json`: structure-function data product with lambda bin edges and centers, counts, `S_1` through `S_4`, and analysis metadata
+- `structure_functions.png`: optional log-log structure-function plot
 
 ## Repository Structure
 
