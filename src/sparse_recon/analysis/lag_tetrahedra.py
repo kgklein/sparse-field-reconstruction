@@ -556,6 +556,7 @@ def prepare_saved_elsasser_lag_tetrahedra_input(
             "input_mode": "saved_helioswarm_elsasser_pairs",
             "available_spacecraft_labels": available_labels,
             "spacecraft_labels": selected_labels,
+            "helioswarm": metadata_json.get("helioswarm"),
             "selected_time_index": int(selected_time_index),
             "selected_time_seconds": float(times[selected_time_index]),
             "input": {
@@ -874,9 +875,38 @@ def plot_lag_tetrahedra_ep_scatter(
     highlight_tetrahedron_index: int | None = None,
     title: str = "",
 ):
-    fig, ax = plt.subplots(figsize=(7, 6), constrained_layout=True)
+    fig, axes = plt.subplots(1, 3, figsize=(17, 6), constrained_layout=True)
+    scatter_ax, cdf_ax, meso_ax = axes
+    cdf_twin_ax = cdf_ax.twinx()
+    cdf_ax._cdf_twin_ax = cdf_twin_ax
+    helioswarm_metadata = result.metadata.get("helioswarm")
+    transform_metadata = (
+        helioswarm_metadata.get("transform")
+        if isinstance(helioswarm_metadata, dict)
+        else None
+    )
+    rho_p_km = (
+        transform_metadata.get("rho_p_km")
+        if isinstance(transform_metadata, dict)
+        else None
+    )
+    if rho_p_km is None:
+        raise ValueError(
+            "Lag-tetrahedra metadata must include helioswarm.transform.rho_p_km for mesocenter kilometer plots"
+        )
+    rho_p_km = float(rho_p_km)
+    if not np.isfinite(rho_p_km) or rho_p_km <= 0.0:
+        raise ValueError("helioswarm.transform.rho_p_km must be a positive finite number")
     e_values = np.array([tetra.elongation for tetra in result.retained_tetrahedra], dtype=float)
     p_values = np.array([tetra.planarity for tetra in result.retained_tetrahedra], dtype=float)
+    d_ep_values = np.array([tetra.d_ep for tetra in result.retained_tetrahedra], dtype=float)
+    mesocenter_magnitudes = np.array(
+        [tetra.mesocenter_magnitude for tetra in result.retained_tetrahedra],
+        dtype=float,
+    )
+    log_meso_km_values = np.log10(
+        np.maximum(mesocenter_magnitudes * rho_p_km, np.finfo(float).tiny)
+    )
     size_values = np.array(
         [
             np.mean(
@@ -893,9 +923,11 @@ def plot_lag_tetrahedra_ep_scatter(
     log_size_values = np.log10(np.maximum(size_values, np.finfo(float).tiny))
 
     if len(e_values) == 0:
-        ax.text(0.5, 0.5, "No retained lag tetrahedra", ha="center", va="center")
+        scatter_ax.text(0.5, 0.5, "No retained lag tetrahedra", ha="center", va="center")
+        cdf_ax.text(0.5, 0.5, "No retained lag tetrahedra", ha="center", va="center")
+        meso_ax.text(0.5, 0.5, "No retained lag tetrahedra", ha="center", va="center")
     else:
-        scatter = ax.scatter(
+        scatter = scatter_ax.scatter(
             e_values,
             p_values,
             c=log_size_values if color_by_log_size else "#1f77b4",
@@ -905,15 +937,35 @@ def plot_lag_tetrahedra_ep_scatter(
             edgecolors="none",
         )
         if color_by_log_size:
-            colorbar = fig.colorbar(scatter, ax=ax, shrink=0.9)
+            colorbar = fig.colorbar(scatter, ax=scatter_ax, shrink=0.9)
             colorbar.set_label(r"$\log_{10}(L_{\mathrm{tetra}})$")
+        sorted_indices = np.argsort(d_ep_values, kind="stable")
+        sorted_d_ep = d_ep_values[sorted_indices]
+        cumulative_fraction = np.arange(1, len(sorted_d_ep) + 1, dtype=float) / float(len(sorted_d_ep))
+        histogram_bins = min(20, max(5, int(np.sqrt(len(d_ep_values)))))
+        histogram_counts, histogram_edges, _ = cdf_ax.hist(
+            d_ep_values,
+            bins=histogram_bins,
+            color="#9ecae1",
+            edgecolor="#4c72b0",
+            alpha=0.85,
+        )
+        cdf_twin_ax.step(sorted_d_ep, cumulative_fraction, where="post", color="#1f77b4", linewidth=1.8)
+        meso_ax.scatter(
+            d_ep_values,
+            log_meso_km_values,
+            s=12,
+            alpha=0.85,
+            edgecolors="none",
+            color="#1f77b4",
+        )
         if highlight_tetrahedron_index is not None:
             if highlight_tetrahedron_index < 0 or highlight_tetrahedron_index >= len(result.retained_tetrahedra):
                 raise ValueError(
                     f"highlight_tetrahedron_index must lie in [0, {len(result.retained_tetrahedra) - 1}]"
                 )
             highlighted = result.retained_tetrahedra[int(highlight_tetrahedron_index)]
-            ax.scatter(
+            scatter_ax.scatter(
                 [highlighted.elongation],
                 [highlighted.planarity],
                 s=90,
@@ -922,7 +974,7 @@ def plot_lag_tetrahedra_ep_scatter(
                 linewidths=1.8,
                 zorder=4,
             )
-            ax.text(
+            scatter_ax.text(
                 highlighted.elongation,
                 highlighted.planarity,
                 f"  #{highlight_tetrahedron_index}",
@@ -930,13 +982,72 @@ def plot_lag_tetrahedra_ep_scatter(
                 va="center",
                 fontsize=9,
             )
+            highlighted_rank = float(np.count_nonzero(d_ep_values <= highlighted.d_ep)) / float(len(d_ep_values))
+            histogram_index = np.searchsorted(histogram_edges, highlighted.d_ep, side="right") - 1
+            histogram_index = int(np.clip(histogram_index, 0, len(histogram_counts) - 1))
+            highlighted_count = float(histogram_counts[histogram_index])
+            cdf_ax.scatter(
+                [highlighted.d_ep],
+                [highlighted_count],
+                s=90,
+                facecolors="none",
+                edgecolors="crimson",
+                linewidths=1.8,
+                zorder=4,
+            )
+            cdf_twin_ax.scatter(
+                [highlighted.d_ep],
+                [highlighted_rank],
+                s=90,
+                facecolors="none",
+                edgecolors="crimson",
+                linewidths=1.8,
+                zorder=4,
+            )
+            cdf_twin_ax.text(
+                highlighted.d_ep,
+                highlighted_rank,
+                f"  #{highlight_tetrahedron_index}",
+                color="crimson",
+                va="center",
+                fontsize=9,
+            )
+            highlighted_log_meso_km = np.log10(
+                max(float(highlighted.mesocenter_magnitude) * rho_p_km, np.finfo(float).tiny)
+            )
+            meso_ax.scatter(
+                [highlighted.d_ep],
+                [highlighted_log_meso_km],
+                s=90,
+                facecolors="none",
+                edgecolors="crimson",
+                linewidths=1.8,
+                zorder=4,
+            )
+            meso_ax.text(
+                highlighted.d_ep,
+                highlighted_log_meso_km,
+                f"  #{highlight_tetrahedron_index}",
+                color="crimson",
+                va="center",
+                fontsize=9,
+            )
 
-    ax.set_xlabel("Elongation E")
-    ax.set_ylabel("Planarity P")
-    ax.grid(alpha=0.3)
+    scatter_ax.set_xlabel("Elongation E")
+    scatter_ax.set_ylabel("Planarity P")
+    scatter_ax.grid(alpha=0.3)
+    cdf_ax.set_xlabel(r"$d_{EP} = \sqrt{E^2 + P^2}$")
+    cdf_ax.set_ylabel("Count")
+    cdf_ax.grid(alpha=0.3)
+    cdf_twin_ax.set_ylabel("Cumulative Fraction")
+    if len(d_ep_values) > 0:
+        cdf_twin_ax.set_ylim(0.0, 1.0)
+    meso_ax.set_xlabel(r"$d_{EP} = \sqrt{E^2 + P^2}$")
+    meso_ax.set_ylabel(r"$\log_{10}(|L_{\mathrm{meso}}| / \mathrm{km})$")
+    meso_ax.grid(alpha=0.3)
     if title:
-        ax.set_title(title)
-    return fig, ax
+        fig.suptitle(title)
+    return fig, axes
 
 
 def plot_lag_tetrahedra_yaglom_flux(
@@ -1089,35 +1200,100 @@ def plot_lag_tetrahedra_epsilon_diagnostics(
     result: LagTetrahedraResult,
     *,
     highlight_tetrahedron_index: int | None = None,
+    lag_scale_units: str = "rho_p",
+    lag_scale_transform: str = "linear",
+    log_floor: float = 1.0e-12,
     title: str = "",
 ):
+    if lag_scale_units not in {"rho_p", "km"}:
+        raise ValueError("lag_scale_units must be 'rho_p' or 'km'")
+    if lag_scale_transform not in {"linear", "log10"}:
+        raise ValueError("lag_scale_transform must be 'linear' or 'log10'")
+
+    rho_p_km = None
+    if lag_scale_units == "km":
+        helioswarm_metadata = result.metadata.get("helioswarm")
+        transform_metadata = (
+            helioswarm_metadata.get("transform")
+            if isinstance(helioswarm_metadata, dict)
+            else None
+        )
+        rho_p_km = (
+            transform_metadata.get("rho_p_km")
+            if isinstance(transform_metadata, dict)
+            else None
+        )
+        if rho_p_km is None:
+            raise ValueError(
+                "Lag-tetrahedra metadata must include helioswarm.transform.rho_p_km for kilometer plots"
+            )
+        rho_p_km = float(rho_p_km)
+        if not np.isfinite(rho_p_km) or rho_p_km <= 0.0:
+            raise ValueError("helioswarm.transform.rho_p_km must be a positive finite number")
+
+    def _transform_lag_scale(values) -> np.ndarray:
+        transformed = np.asarray(values, dtype=float)
+        if lag_scale_units == "km":
+            transformed = transformed * float(rho_p_km)
+        if lag_scale_transform == "log10":
+            transformed = np.log10(np.maximum(transformed, float(log_floor)))
+        return transformed
+
+    if lag_scale_units == "rho_p" and lag_scale_transform == "linear":
+        x_label = r"$|\ell_{\mathrm{meso}}|$ ($\rho_p$)"
+    elif lag_scale_units == "km" and lag_scale_transform == "linear":
+        x_label = r"$|\ell_{\mathrm{meso}}|$ (km)"
+    elif lag_scale_units == "rho_p" and lag_scale_transform == "log10":
+        x_label = r"$\log_{10}(|\ell_{\mathrm{meso}}| / \rho_p)$"
+    else:
+        x_label = r"$\log_{10}(|\ell_{\mathrm{meso}}| / \mathrm{km})$"
+
     fig = plt.figure(figsize=(12, 5), constrained_layout=True)
     subfigs = fig.subfigures(1, 2)
     plot_specs = [
         (r"$\epsilon^+$", "epsilon_plus"),
         (r"$\epsilon^-$", "epsilon_minus"),
     ]
+    filtered_tetrahedra = [
+        tetra
+        for tetra in result.retained_tetrahedra
+        if tetra.passes_quality_cut and tetra.is_valid_for_gradient
+    ]
+    values_by_attr = {
+        attr_name: np.array(
+            [
+                getattr(tetra, attr_name)
+                for tetra in filtered_tetrahedra
+                if getattr(tetra, attr_name) is not None
+            ],
+            dtype=float,
+        )
+        for _, attr_name in plot_specs
+    }
+    finite_y_values = np.concatenate(
+        [
+            values[np.isfinite(values)]
+            for values in values_by_attr.values()
+            if values.size > 0
+        ]
+    ) if any(values.size > 0 for values in values_by_attr.values()) else np.array([], dtype=float)
+    if finite_y_values.size == 0:
+        shared_y_extent = 1.0
+    else:
+        shared_y_extent = float(np.max(np.abs(finite_y_values)))
+        if not np.isfinite(shared_y_extent) or shared_y_extent <= 0.0:
+            shared_y_extent = 1.0
+    shared_y_limits = (-shared_y_extent, shared_y_extent)
 
     for subfig, (label, attr_name) in zip(subfigs, plot_specs):
         axes = subfig.subplots(1, 2, gridspec_kw={"width_ratios": [4, 1]}, sharey=True)
         ax_scatter, ax_hist = axes
-        values = np.array(
-            [
-                getattr(tetra, attr_name)
-                for tetra in result.retained_tetrahedra
-                if tetra.passes_quality_cut
-                and tetra.is_valid_for_gradient
-                and getattr(tetra, attr_name) is not None
-            ],
-            dtype=float,
-        )
+        values = values_by_attr[attr_name]
         lag_scales = np.array(
             [
                 tetra.mesocenter_magnitude
-                for tetra in result.retained_tetrahedra
-                if tetra.passes_quality_cut
-                and tetra.is_valid_for_gradient
-                and getattr(tetra, attr_name) is not None
+                for tetra in filtered_tetrahedra
+                if getattr(tetra, attr_name) is not None
             ],
             dtype=float,
         )
@@ -1127,10 +1303,26 @@ def plot_lag_tetrahedra_epsilon_diagnostics(
         else:
             mean_value = float(np.mean(values))
             std_value = float(np.std(values))
-            ax_scatter.scatter(lag_scales, values, s=10, alpha=0.8, edgecolors="none")
+            transformed_lag_scales = _transform_lag_scale(lag_scales)
+            ax_scatter.scatter(transformed_lag_scales, values, s=10, alpha=0.8, edgecolors="none")
             ax_scatter.axhline(mean_value, color="tab:red", linestyle="--", linewidth=1.0)
             ax_scatter.axhspan(mean_value - std_value, mean_value + std_value, color="tab:red", alpha=0.15)
-            ax_hist.hist(values, bins=min(20, max(5, int(np.sqrt(values.size)))), orientation="horizontal", color="#4c72b0", alpha=0.85)
+            histogram_counts, histogram_edges = np.histogram(
+                values,
+                bins=min(20, max(5, int(np.sqrt(values.size)))),
+                range=shared_y_limits,
+            )
+            positive_mask = histogram_counts > 0
+            if np.any(positive_mask):
+                histogram_centers = 0.5 * (histogram_edges[:-1] + histogram_edges[1:])
+                histogram_heights = np.diff(histogram_edges)
+                ax_hist.barh(
+                    histogram_centers[positive_mask],
+                    np.log10(histogram_counts[positive_mask].astype(float)),
+                    height=histogram_heights[positive_mask],
+                    color="#4c72b0",
+                    alpha=0.85,
+                )
             ax_hist.axhline(mean_value, color="tab:red", linestyle="--", linewidth=1.0)
             ax_hist.axhspan(mean_value - std_value, mean_value + std_value, color="tab:red", alpha=0.15)
         if highlight_tetrahedron_index is not None:
@@ -1141,8 +1333,9 @@ def plot_lag_tetrahedra_epsilon_diagnostics(
             highlighted = result.retained_tetrahedra[int(highlight_tetrahedron_index)]
             highlighted_value = getattr(highlighted, attr_name)
             if highlighted_value is not None and highlighted.mesocenter_magnitude is not None:
+                highlighted_lag_scale = _transform_lag_scale([highlighted.mesocenter_magnitude])
                 ax_scatter.scatter(
-                    [highlighted.mesocenter_magnitude],
+                    highlighted_lag_scale,
                     [highlighted_value],
                     s=90,
                     facecolors="none",
@@ -1160,11 +1353,13 @@ def plot_lag_tetrahedra_epsilon_diagnostics(
                     zorder=4,
                     transform=ax_hist.get_yaxis_transform(),
                 )
-        ax_scatter.set_xlabel(r"$|\ell_{\mathrm{meso}}|$ ($\rho_p$)")
+        ax_scatter.set_xlabel(x_label)
         ax_scatter.set_ylabel(label)
         ax_scatter.grid(alpha=0.3)
         ax_hist.grid(alpha=0.3)
-        ax_hist.set_xticks([])
+        ax_scatter.set_ylim(*shared_y_limits)
+        ax_hist.set_ylim(*shared_y_limits)
+        ax_hist.set_xlabel(r"$\log_{10}(\mathrm{count})$")
         subfig.suptitle(label)
     if title:
         fig.suptitle(title)
@@ -1195,8 +1390,8 @@ def plot_lag_tetrahedra_baseline_projections(
     axes[0, 1].axis("off")
 
     panel_specs = [
-        (axes[0, 0], 0, 1, r"$\log_{10}|\ell_x / \rho_p|$", r"$\log_{10}|\ell_y / \rho_p|$"),
-        (axes[1, 0], 0, 2, r"$\log_{10}|\ell_x / \rho_p|$", r"$\log_{10}|\ell_z / \rho_p|$"),
+        (axes[0, 0], 0, 2, r"$\log_{10}|\ell_x / \rho_p|$", r"$\log_{10}|\ell_z / \rho_p|$"),
+        (axes[1, 0], 0, 1, r"$\log_{10}|\ell_x / \rho_p|$", r"$\log_{10}|\ell_y / \rho_p|$"),
         (axes[1, 1], 2, 1, r"$\log_{10}|\ell_z / \rho_p|$", r"$\log_{10}|\ell_y / \rho_p|$"),
     ]
     finite_log_values = log_components[np.isfinite(log_components)]
@@ -1211,6 +1406,8 @@ def plot_lag_tetrahedra_baseline_projections(
     if np.isclose(global_log_min, global_log_max):
         global_log_min -= 0.5
         global_log_max += 0.5
+    shared_log_limits = (global_log_min, global_log_max)
+
     for ax, x_index, y_index, x_label, y_label in panel_specs:
         ax.scatter(
             log_components[:, x_index],
@@ -1223,12 +1420,12 @@ def plot_lag_tetrahedra_baseline_projections(
         ax.set_xlabel(x_label)
         ax.set_ylabel(y_label)
         ax.grid(alpha=0.3)
-        ax.set_xlim(global_log_min, global_log_max)
-        ax.set_ylim(global_log_min, global_log_max)
+        ax.set_xlim(*shared_log_limits)
+        ax.set_ylim(*shared_log_limits)
         ax.set_aspect("equal", adjustable="box")
 
     baseline_plotting = {
-        "global_log_range": [global_log_min, global_log_max],
+        "global_log_range": list(shared_log_limits),
     }
 
     if highlight_tetrahedron_index is not None:

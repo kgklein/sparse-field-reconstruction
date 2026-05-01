@@ -63,6 +63,11 @@ def run_lag_tetrahedra_analysis(args) -> dict:
             if args.plot
             else None
         ),
+        "epsilon_log_km_plot_path": (
+            str(output_dir / "lag_tetrahedra_epsilon_diagnostics_log_km.png")
+            if args.plot
+            else None
+        ),
         "baseline_projection_plot_path": (
             str(output_dir / "lag_tetrahedra_baseline_projections.png")
             if args.plot
@@ -124,6 +129,14 @@ def run_lag_tetrahedra_analysis(args) -> dict:
             title="Cascade-Rate Diagnostics",
         )
         epsilon_fig.savefig(output_dir / "lag_tetrahedra_epsilon_diagnostics.png", dpi=150)
+        epsilon_log_km_fig, _ = plot_lag_tetrahedra_epsilon_diagnostics(
+            result,
+            highlight_tetrahedron_index=args.highlight_tetrahedron_index,
+            lag_scale_units="km",
+            lag_scale_transform="log10",
+            title="Cascade-Rate Diagnostics",
+        )
+        epsilon_log_km_fig.savefig(output_dir / "lag_tetrahedra_epsilon_diagnostics_log_km.png", dpi=150)
         baseline_fig, _, baseline_plotting = plot_lag_tetrahedra_baseline_projections(
             result,
             highlight_tetrahedron_index=args.highlight_tetrahedron_index,
@@ -169,6 +182,11 @@ def run_lag_tetrahedra_analysis(args) -> dict:
             flush=True,
         )
         print(
+            f"Saved log-km epsilon diagnostics plot to "
+            f"{output_dir / 'lag_tetrahedra_epsilon_diagnostics_log_km.png'}",
+            flush=True,
+        )
+        print(
             f"Saved baseline projection plot to "
             f"{output_dir / 'lag_tetrahedra_baseline_projections.png'}",
             flush=True,
@@ -190,6 +208,11 @@ def run_lag_tetrahedra_analysis(args) -> dict:
         ),
         "epsilon_plot_path": (
             str(output_dir / "lag_tetrahedra_epsilon_diagnostics.png")
+            if args.plot
+            else None
+        ),
+        "epsilon_log_km_plot_path": (
+            str(output_dir / "lag_tetrahedra_epsilon_diagnostics_log_km.png")
             if args.plot
             else None
         ),
