@@ -4,7 +4,7 @@ Thank you for contributing to the Sparse Field Reconstruction project.
 
 This repository supports a collaborative research effort. The goal is to maintain a clean,
 reproducible, and comparable workflow across reconstruction experiments, simulation-backed
-HelioSwarm runs, and moving-observatory time-series analyses.
+HelioSwarm runs, moving-observatory time-series analyses, and downstream turbulence diagnostics.
 
 ## Core Principles
 
@@ -49,12 +49,15 @@ Before submitting a pull request:
 
 - ensure the relevant runnable scripts still work
 - verify your feature works on at least one shared dataset or example input
-- add or update tests when you change sampling behavior, interpolation, output schema, or transform logic
+- add or update tests when you change sampling behavior, interpolation, output schema, transform logic, or downstream analysis payloads
 
 Examples of useful checks:
 
 - `python scripts/run_baseline.py ...`
 - `python scripts/run_hs_timeseries.py ...`
+- `python scripts/run_structure_functions.py ...`
+- `python scripts/run_space_time_correlation.py ...`
+- `python scripts/run_lag_tetrahedra.py ...`
 - `pytest`
 
 ### 4. Open a pull request
@@ -91,6 +94,24 @@ Contributions may also target moving-observatory analyses. These should:
 - preserve or clearly document output schema changes
 - test structured-grid sampling behavior carefully
 - explicitly document any change to interpolation behavior such as `nearest` versus `trilinear`
+- preserve compatibility with downstream consumers of `helioswarm_timeseries.csv` and `helioswarm_timeseries_metadata.json`, or document and test the intended migration
+
+### Elsasser pair products and lag-tetrahedra workflows
+
+Changes to velocity/Elsasser workflows should:
+
+- document when `helioswarm_timeseries_elsasser_pairs.npz` and `.json` are expected to be produced
+- keep pair-label ordering, shape metadata, and time alignment consistent unless a schema change is intentional
+- test downstream compatibility with `scripts/run_lag_tetrahedra.py` when modifying pair-product content or metadata
+- document any change to plotting controls or diagnostic fields written by the lag-tetrahedra analysis
+
+### Structure-function and space-time-correlation workflows
+
+Changes to downstream analysis scripts should:
+
+- preserve clearly documented input requirements for existing time-series products
+- note any change to JSON structure, diagnostic sections, or plot outputs
+- add or update tests when changing binning rules, undersampled-bin handling, decorrelation summaries, or metadata fields
 
 ### Coordinate transforms and rescaling
 
@@ -121,6 +142,7 @@ All evaluation metrics should:
 - Save outputs such as metrics, figures, CSV tables, and metadata in reproducible formats
 - Avoid one-off scripts that cannot be reused
 - If you change metadata or CSV outputs, add tests that verify the new schema
+- If you change NPZ or JSON analysis products, add tests that verify the new schema and downstream expectations
 
 ### Coding style
 
@@ -161,6 +183,7 @@ A strong contribution:
 - produces interpretable results
 - preserves or improves reproducibility
 - documents any transform or rescaling assumptions clearly
+- keeps upstream and downstream workflow contracts aligned across time-series, Elsasser, and analysis outputs
 
 ## Questions?
 
